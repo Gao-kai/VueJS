@@ -1,0 +1,31 @@
+{
+  "name": "MiniVue",
+  "version": "1.0.0",
+  "description": "易学易用，性能出色，适用场景丰富的 Web 前端框架。",
+  "main": "index.js",
+  "scripts": {
+    "build:dev": "rollup -c",
+    "serve": "cross-env ENV=development rollup -c -w"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gao-kai/VueJS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Gao-kai/VueJS/issues"
+  },
+  "homepage": "https://github.com/Gao-kai/VueJS#readme",
+  "devDependencies": {
+    "@babel/core": "^7.15.5",
+    "@babel/preset-env": "^7.15.6",
+    "cross-env": "^7.0.3",
+    "rollup": "^2.56.3",
+    "rollup-plugin-babel": "^4.4.0",
+    "rollup-plugin-serve": "^1.1.0",
+    "htmlparser2": "^8.0.1"
+  },
+  "type": "module"
+}
