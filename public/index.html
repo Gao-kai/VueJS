@@ -11,9 +11,9 @@
   </head>
   <body>
     <div id="app">
-     <div>{{name}}</div>
-     <span>{{age}}</span>
-     <p>{{address.country}}</p>
+      <div style="color: pink; font-size: 18px">{{name}} hello</div>
+      <span>{{age}}</span>
+      <p>{{address.country}}</p>
     </div>
 
     <script>
@@ -23,10 +23,10 @@
           return {
             name: "GeoGusser",
             age: "18",
-            address:{
-              country:'China',
-              provice:'甘肃'
-            }
+            address: {
+              country: "China",
+              provice: "甘肃",
+            },
           };
         },
       });
@@ -38,9 +38,8 @@
 
         vm.name = "Demo";
       */
-      
 
-       /* 
+      /* 
         2. 验证直接给属性赋值一个新的对象是否会重新进行属性劫持
         vm.address => 属性代理 => vm._data.address => data.address => 属性劫持 => 触发name属性的setter劫持 => 对newValue进行再次劫持 => observe(newValue)
 
@@ -49,9 +48,6 @@
           provice:'四川'
         }
       */
-
-
-
     </script>
   </body>
 </html>
