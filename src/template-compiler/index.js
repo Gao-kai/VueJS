@@ -23,12 +23,21 @@ export function compileToFunction(templateString){
 
     /* 
         3. 模板编译第三步：将字符串通过new Function生成render函数
+        如何将代码字符串运行，目前有两种方案：
+        + eval()
+        + new Function() 
+
+        通过new Function生成函数之后，函数体里面的name、age等变量从this上取值，
+        最后调用这个render函数的时候通过call绑定this即可：renderFn.call(vm)
+        这样就实现了去vm上取变量name、age等变量了
+
+
     */
     const renderBody = `with(this){
         return ${code};
-    }`
-    const render = new Function(renderBody);
+    }`;
+    const renderFn = new Function(renderBody);
 
-    return render;
+    return renderFn;
     
 }

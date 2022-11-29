@@ -1,5 +1,6 @@
 import { initState } from "./initState.js";
 import { compileToFunction } from "../template-compiler/index.js";
+import {mountComponent} from '../lifeCycle/mountComponent.js'
 
 export function initMixin(Vue) {
   /* 在这里给Vue原型拓展两个方法 */
@@ -39,7 +40,7 @@ export function initMixin(Vue) {
 
       // 确定template模板字符串，进行模板编译得到render函数
       if (templateString) {
-        // 核心1：基于确定的模板字符串得到一个render函数
+        // 核心1：基于确定的模板字符串 模板编译 得到render函数
         const render = compileToFunction(templateString);
 		
         // 核心2：将render函数挂载到options对象上
@@ -47,8 +48,15 @@ export function initMixin(Vue) {
       }
     }
 
-    // 模板挂载：将data对象中的值挂载到DOM元素上
-    // vm.$options中可以获取前面生成的render函数
-    // mountComponent(vm, element);
+    
+    /**
+     * 组件的挂载
+     * 
+     * 1. 执行上一步模板编译时生成的render函数，得到一个虚拟DOM对象
+     * 2. 将虚拟DOM对象更新到element 真实DOM元素上
+     * 3. render函数已经在上一步模板编译完成之后挂载到了options对象上，通过参数vm.$options获取
+     * 
+     */
+    mountComponent(vm, element);
   };
 }

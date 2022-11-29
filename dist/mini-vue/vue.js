@@ -651,18 +651,19 @@
                 v = _item$split2[1];
               styleObj[k.trim()] = v.trim();
             });
-            console.log('styleObj', styleObj);
+            // console.log('styleObj',styleObj)
             value = styleObj;
           })();
         }
         propsStr += "".concat(name, ":").concat(JSON.stringify(value), ",");
       }
+
+      // console.log("拼接的属性字符串为：",propsStr.slice(0,-1))
     } catch (err) {
       _iterator.e(err);
     } finally {
       _iterator.f();
     }
-    console.log("拼接的属性字符串为：", propsStr.slice(0, -1));
     return "{".concat(propsStr.slice(0, -1), "}");
   }
   function generatorChildren(children) {
@@ -716,10 +717,11 @@
     }
   }
   function codeGenerator(astTree) {
-    console.log("输入的是AST抽象语法树===>\n", astTree);
+    // console.log("输入的是AST抽象语法树===>\n",astTree);
     var childrenCode = generatorChildren(astTree.children);
     var code = "_c(\"".concat(astTree.tag, "\",").concat(astTree.attrs.length > 0 ? generatorProps(astTree.attrs) : null).concat(astTree.children.length > 0 ? ",".concat(childrenCode) : "", ")");
-    console.log("返回的是render函数字符串", code);
+
+    // console.log("返回的是render函数字符串",code);
     return code;
   }
 
@@ -788,10 +790,42 @@
 
     /* 
         3. 模板编译第三步：将字符串通过new Function生成render函数
-    */
+        如何将代码字符串运行，目前有两种方案：
+        + eval()
+        + new Function() 
+          通过new Function生成函数之后，函数体里面的name、age等变量从this上取值，
+        最后调用这个render函数的时候通过call绑定this即可：renderFn.call(vm)
+        这样就实现了去vm上取变量name、age等变量了
+        */
     var renderBody = "with(this){\n        return ".concat(code, ";\n    }");
-    var render = new Function(renderBody);
-    return render;
+    var renderFn = new Function(renderBody);
+    return renderFn;
+  }
+
+  /**
+   * 
+   * @param {*} vm 实例
+   * @param {*} element DOM元素
+   */
+  function mountComponent(vm, element) {
+    // 将element节点挂在vm上 可以在任意vm方法中读取
+    vm.$el = element;
+    /* 
+        1. 执行render函数生成虚拟DOM
+        在源码里有一个vm._render方法，调用该方法其实就是调用vm.$options.render方法
+        该方法的返回值是一个虚拟DOM对象
+    */
+    var vNode = vm._render();
+
+    /* 
+        2. 根据虚拟DOM产生真实DOM
+        在源码里有一个vm._update方法，调用该方法会将上一步生成的虚拟DOM转化为真实DOM
+    */
+    vm._update(vNode);
+
+    /* 
+        3. 将真实DOM插入到DOM节点中
+    */
   }
 
   function initMixin(Vue) {
@@ -830,7 +864,7 @@
 
         // 确定template模板字符串，进行模板编译得到render函数
         if (templateString) {
-          // 核心1：基于确定的模板字符串得到一个render函数
+          // 核心1：基于确定的模板字符串 模板编译 得到render函数
           var render = compileToFunction(templateString);
 
           // 核心2：将render函数挂载到options对象上
@@ -838,10 +872,216 @@
         }
       }
 
-      // 模板挂载：将data对象中的值挂载到DOM元素上
-      // vm.$options中可以获取前面生成的render函数
-      // mountComponent(vm, element);
+      /**
+       * 组件的挂载
+       * 
+       * 1. 执行上一步模板编译时生成的render函数，得到一个虚拟DOM对象
+       * 2. 将虚拟DOM对象更新到element 真实DOM元素上
+       * 3. render函数已经在上一步模板编译完成之后挂载到了options对象上，通过参数vm.$options获取
+       * 
+       */
+      mountComponent(vm, element);
     };
+  }
+
+  /**
+   *
+   * @param {*} vm 实例
+   * @param {*} tag 元素名称
+   * @param {*} data data代表元素属性对象
+   * @param  {...any} children 元素子节点
+   * @returns
+   */
+  function createElementVNode(vm, tag, data) {
+    if (!data) {
+      data = {};
+    }
+    // 这个key就是虚拟DOM diff时的那个key，存在于属性data中
+    var key = data.key;
+
+    // 创建元素虚拟节点
+    for (var _len = arguments.length, children = new Array(_len > 3 ? _len - 3 : 0), _key = 3; _key < _len; _key++) {
+      children[_key - 3] = arguments[_key];
+    }
+    return createVNode(vm, tag, key, data, children, null);
+  }
+
+  /**
+   *
+   * @param {*} vm 实例
+   * @param {*} text 文本
+   * @param {*} props 属性
+   */
+  function createTextVNode(vm, text) {
+    // 创建元素虚拟节点
+    return createVNode(vm, null, null, null, null, text);
+  }
+
+  /**
+   *
+   * @param {*} vm 实例对象
+   * @param {*} tag 生成的元素节点名称
+   * @param {*} key DOM diff时的ket
+   * @param {*} props 生成的元素属性对象
+   * @param {*} children 子元素组成的数组
+   * @param {*} text 元素的文本
+   */
+  function createVNode(vm, tag, key, props, children, text) {
+    /* 
+            问题：虚拟DOM和AST抽象树的区别
+    
+            AST是语法层面的转换，将html模板语法转化为JS对象，描述的是语法本身，不能自定义的去放置一些自定义的属性。HTML模板是什么转化出来就是什么，AST不仅可以描述html、还可以描述css、es6语法等。
+    
+            虚拟DOM是用JS语法描述DOM元素对象的，可以使用自定义的属性，比如事件、指令、插槽都可以自定义的去描述。
+        */
+    return {
+      vm: vm,
+      tag: tag,
+      key: key,
+      props: props,
+      children: children,
+      text: text
+    };
+  }
+
+  /**
+   * Vue核心流程
+   * 1. 基于vm.data初始化，创建响应式数据
+   * 2. 基于模板编译，生成AST抽象语法树
+   * 3. 基于ast语法树，通过代码生成原理生成render函数
+   * 4. 执行render函数生成虚拟DOM，在执行的过程中会使用到响应式数据
+   * 5. 根据生成虚拟DOM创建出真实DOM节点
+   *
+   * 之后每次数据更新，无需再进行模板编译到生成render函数的这个耗时过程，因为这个过程涉及到了正则匹配，而是直接执行render函数生成新的虚拟DOM，对比新旧虚拟DOM然后更新视图
+   */
+
+  function initLifeCycle(Vue) {
+    /**
+     *  1. _render方法的返回值：虚拟DOM
+     *
+     *  2.  _render方法运行时的this
+     *  在通过模板AST语法树生成的render函数中,由于使用with绑定了this为目标作用域，而render函数体中的name、age等变量又需要去vm上取值，所以这里使用call绑定vm为render函数运行时的this对象。
+     *
+     *  3. 执行render函数的时候，里面的_c、_s、_v是没有定义的，所以需要定义这三个函数
+     *
+     *  4. 执行render函数的时候，会去vm上取属性的值，就会触发getter和setter
+     *   触发之后就可以将视图和属性绑定在一起
+     */
+    Vue.prototype._render = function () {
+      var vm = this;
+      console.log(vm.$options.render);
+      return vm.$options.render.call(vm);
+    };
+    Vue.prototype._update = function (vNode) {
+      console.log("生成的虚拟DOM节点为", vNode);
+
+      // 读取即将要挂载的真实DOM节点
+      var vm = this;
+      var element = vm.$el;
+
+      /**
+       * 1. 获取基于vNode虚拟DOM生成的真实DOM节点
+       * 2. 将真实DOM节点替换到旧的element元素节点上
+       * 3. 将真实DOM节点赋值给实例的$el属性，方便在下一次更新的时候传递oldVNode的时候，参数就是上一次生成的$el属性
+       *
+       */
+
+      var truthDom = patch(element, vNode);
+      vm.$el = truthDom;
+    };
+
+    /* 生成虚拟DOM元素节点 */
+    Vue.prototype._c = function () {
+      return createElementVNode.apply(void 0, [this].concat(Array.prototype.slice.call(arguments)));
+    };
+
+    /* 生成虚拟DOM文本节点 */
+    Vue.prototype._v = function () {
+      return createTextVNode.apply(void 0, [this].concat(Array.prototype.slice.call(arguments)));
+    };
+
+    /* 将参数进行字符串转义 */
+    Vue.prototype._s = function (value) {
+      if (!(value instanceof Object)) return value;
+      return JSON.stringify(value);
+    };
+  }
+
+  /**
+   * patch方法是Vue中的更新视图的核心方法，Vue2.0、3.0都有
+   *
+   * patch方法可以用来将虚拟DOM转化为真实DOM
+   * pathc方法也可以用来更新视图，DIff算法就走patch
+   *
+   *
+   * @param {*} oldVNode 可能是初渲染的真实DOM，也可能是更新时传入的旧的虚拟DOM
+   * @param {*} vNode 执行render函数生成的虚拟DOM对象
+   */
+  function patch(oldVNode, vNode) {
+    // 如果oldVNode是一个真实的DOM元素 那么代表传递进来的是要挂载的DOM节点是初始化渲染
+    var isRealDomElement = oldVNode.nodeType;
+    if (isRealDomElement) {
+      // 初始化渲染流程
+
+      var oldElement = oldVNode;
+      var parentNode = oldElement.parentNode;
+      var newElement = createElement(vNode);
+
+      // 基于最新的vNode虚拟DOM生成的真实DOM节点先插入到旧节点的后面兄弟节点
+      parentNode.insertBefore(newElement, oldElement.nextSibling);
+      // 然后再将旧节点移除
+      parentNode.removeChild(oldElement);
+      // 最后返回新的真实DOM节点，挂载到vm.$el上，下次更新的时候直接去vm.$el上获取
+      return newElement;
+    }
+  }
+
+  /**
+   * 将虚拟DOM vNode转化为 真实DOM节点
+   * JS对象 ==> HTML Element
+   */
+  function createElement(vNode) {
+    var tag = vNode.tag,
+      props = vNode.props,
+      children = vNode.children,
+      text = vNode.text;
+
+    // 创建真实元素节点
+    if (typeof tag === "string") {
+      // 虚拟DOM和真实DOM连接起来
+      vNode.el = document.createElement(tag);
+
+      // 给节点属性赋值
+      patchProps(props, vNode.el);
+      console.dir(vNode.el);
+
+      // 给节点添加子节点
+      children.forEach(function (childvNode) {
+        vNode.el.appendChild(createElement(childvNode));
+      });
+    } else {
+      // 创建真实文本节点
+      vNode.el = document.createTextNode(text);
+    }
+    return vNode.el;
+  }
+
+  /**
+   * @param {Object} props 属性组成的对象
+   * @param {Object} element 当前属性要挂载的元素节点
+   * props:{ id:'app',style:{ color:red}}
+   */
+  function patchProps(props, element) {
+    for (var key in props) {
+      if (key === "style") {
+        var styleObj = props.style;
+        for (var _key in styleObj) {
+          element.style.key = styleObj[_key];
+        }
+      } else {
+        element.setAttribute(key, props[key]);
+      }
+    }
   }
 
   /* 打包入口文件 */
@@ -853,6 +1093,9 @@
 
   // 给Vue类拓展初始化options的方法
   initMixin(Vue);
+
+  // 模板编译 组件挂载
+  initLifeCycle(Vue);
 
   return Vue;
 

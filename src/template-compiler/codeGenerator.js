@@ -31,13 +31,13 @@ function generatorProps(attrs){
                 let [k,v] = item.split(":");
                 styleObj[k.trim()] = v.trim();
             })
-            console.log('styleObj',styleObj)
+            // console.log('styleObj',styleObj)
             value = styleObj;
         }
         propsStr += `${name}:${JSON.stringify(value)},`;
     }
 
-    console.log("拼接的属性字符串为：",propsStr.slice(0,-1))
+    // console.log("拼接的属性字符串为：",propsStr.slice(0,-1))
     return `{${propsStr.slice(0,-1)}}`
 }
 
@@ -101,13 +101,12 @@ function generatorChild(astNode){
 
 
 export function codeGenerator(astTree) {
-    console.log("输入的是AST抽象语法树===>\n",astTree);
+    // console.log("输入的是AST抽象语法树===>\n",astTree);
     let childrenCode = generatorChildren(astTree.children);
 
     const code = `_c("${astTree.tag}",${astTree.attrs.length > 0 ? generatorProps(astTree.attrs): null}${astTree.children.length > 0 ? `,${childrenCode}`: ""})`
 
-
-    console.log("返回的是render函数字符串",code);
+    // console.log("返回的是render函数字符串",code);
     return code;
 
 }
