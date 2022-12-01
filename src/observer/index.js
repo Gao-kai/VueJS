@@ -1,3 +1,5 @@
+import Dep from "./dep";
+
 // 传递过来的是data引用空间
 export function observe(data) {
 	// 只有对象才可以劫持 如果不是对象 那么不用劫持
@@ -58,16 +60,29 @@ class Observer {
 function defineReactive(target, key, value) {
 	// 递归劫持 如果对象的属性值还是一个对象
 	observe(value);
-	
+
+	// 每一个属性key都有一个依赖收集器dep
+	let dep = new Dep();
+
 	Object.defineProperty(target, key, {
 		// 拦截取值操作
 		get() {
-			console.log('拦截取值操作', key, value);
+			console.log(`拦截了属性 ${key} 读取操作，当前属性的值是${value}`);
+			/* 
+				如果Dep.target有值
+				1. 说明有一个渲染watcher实例调用了get方法执行渲染
+				2. 并且将自身实例放在了Dep.target属性上
+				3. 那么我们需要让属性依赖收集器dep记住这个watcher
+				4. 让属性和watcher产生关联，执行dep.depend方法，属性dep收集到1个watcher
+			*/
+			if(Dep.target){
+				dep.depend(Dep.target);
+			}
 			return value;
 		},
 		// 拦截赋值操作
 		set(newValue) {
-			console.log('拦截存值操作', key, value);
+			console.log(`拦截了属性 ${key} 存值操作，新属性的值是${newValue}`);
 			if (newValue === value) return;
 
 			// 如果新赋的值是一个新的对象 还需要递归劫持

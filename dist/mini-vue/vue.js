@@ -133,6 +133,41 @@
     };
   }
 
+  /* 
+      dep：每一个属性都有的收集器，用来收集该属性对应的所有watcher
+      由于1个dep可能对应多个watcher
+
+      dependence是依赖的意思，也就是依赖收集器
+      subscribe是订阅者的意思，代表订阅了当前这个属性变化的watcher
+
+      dep实例属性：
+      + id 
+      1个watcher也可能对应多个dep，所以dep也得有id表示
+
+      + subs
+      存放着当前属性所对应的所有watcher
+
+  */
+  var id$1 = 0;
+  var Dep = /*#__PURE__*/function () {
+    function Dep() {
+      _classCallCheck(this, Dep);
+      this.id = id$1++;
+      this.subs = [];
+    }
+
+    // dep进行依赖收集
+    _createClass(Dep, [{
+      key: "depend",
+      value: function depend(watcher) {
+        this.subs.push(watcher);
+      }
+    }]);
+    return Dep;
+  }(); // 给Dep类添加一个静态属性target，表示依赖收集的目标，初始化为null
+  // 静态属性就代表Dep上只有一份
+  Dep.target = null;
+
   // 传递过来的是data引用空间
   function observe(data) {
     // 只有对象才可以劫持 如果不是对象 那么不用劫持
@@ -196,15 +231,28 @@
   function defineReactive(target, key, value) {
     // 递归劫持 如果对象的属性值还是一个对象
     observe(value);
+
+    // 每一个属性key都有一个依赖收集器dep
+    var dep = new Dep();
     Object.defineProperty(target, key, {
       // 拦截取值操作
       get: function get() {
-        console.log('拦截取值操作', key, value);
+        console.log("\u62E6\u622A\u4E86\u5C5E\u6027 ".concat(key, " \u8BFB\u53D6\u64CD\u4F5C\uFF0C\u5F53\u524D\u5C5E\u6027\u7684\u503C\u662F").concat(value));
+        /* 
+        	如果Dep.target有值
+        	1. 说明有一个渲染watcher实例调用了get方法执行渲染
+        	2. 并且将自身实例放在了Dep.target属性上
+        	3. 那么我们需要让属性依赖收集器dep记住这个watcher
+        	4. 让属性和watcher产生关联，执行dep.depend方法，属性dep收集到1个watcher
+        */
+        if (Dep.target) {
+          dep.depend(Dep.target);
+        }
         return value;
       },
       // 拦截赋值操作
       set: function set(newValue) {
-        console.log('拦截存值操作', key, value);
+        console.log("\u62E6\u622A\u4E86\u5C5E\u6027 ".concat(key, " \u5B58\u503C\u64CD\u4F5C\uFF0C\u65B0\u5C5E\u6027\u7684\u503C\u662F").concat(newValue));
         if (newValue === value) return;
 
         // 如果新赋的值是一个新的对象 还需要递归劫持
@@ -776,7 +824,7 @@
    * @return {Function} render函数
    */
   function compileToFunction(templateString) {
-    console.log('原始模板字符串 =====>\n', templateString);
+    // console.log('原始模板字符串 =====>\n',templateString);
 
     /* 
         1. 模板编译第一步：解析HTML模板字符串templateString为AST抽象语法树
@@ -802,30 +850,67 @@
     return renderFn;
   }
 
+  var id = 0;
+  var Watcher = /*#__PURE__*/function () {
+    /* 
+        1. vm：需要告诉我当前这个watcher实例是那个vm实例的
+        2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
+        3. options 值为true的时候表示要创建一个渲染watcher
+    */
+    function Watcher(vm, fn, options) {
+      _classCallCheck(this, Watcher);
+      this.id = id++;
+      this.renderWatcher = options;
+      this.getter = fn;
+      this.get();
+    }
+
+    /* 
+        执行get方法的流程：
+        0. 将当前watcher实例放到Dep.target属性上
+        1. this.getter();
+        2. 调用渲染逻辑updateComponent
+        3. 调用_update和_render
+        4. 调用_render的时候去vm上读取属性值
+        5. 触发getter，判断是否Dep.target有值，如果有值，执行dep依赖收集方法depend
+          name => dep.depned => [watcher]
+        age => dep.depend => [watcher]
+    */
+    _createClass(Watcher, [{
+      key: "get",
+      value: function get() {
+        Dep.target = this;
+        this.getter();
+        Dep.target = null;
+      }
+    }]);
+    return Watcher;
+  }();
+
   /**
    * 
    * @param {*} vm 实例
-   * @param {*} element DOM元素
+   * @param {*} element 根据用户传入的el生成的DOM元素
    */
   function mountComponent(vm, element) {
     // 将element节点挂在vm上 可以在任意vm方法中读取
     vm.$el = element;
+
     /* 
         1. 执行render函数生成虚拟DOM
         在源码里有一个vm._render方法，调用该方法其实就是调用vm.$options.render方法
         该方法的返回值是一个虚拟DOM对象
-    */
-    var vNode = vm._render();
-
-    /* 
-        2. 根据虚拟DOM产生真实DOM
+          2. 根据虚拟DOM产生真实DOM
         在源码里有一个vm._update方法，调用该方法会将上一步生成的虚拟DOM转化为真实DOM
+          3. 将真实DOM插入到DOM节点中
     */
-    vm._update(vNode);
 
-    /* 
-        3. 将真实DOM插入到DOM节点中
-    */
+    // 只要一调用updateComponent 就会发生视图重新更新
+    var updateComponent = function updateComponent() {
+      vm._update(vm._render());
+    };
+    // 第三个参数true表示是一个渲染watcher
+    new Watcher(vm, updateComponent, true);
   }
 
   function initMixin(Vue) {
@@ -839,6 +924,8 @@
 
       // 开始初始化options中的各个状态 data - props - methods...
       initState(vm);
+
+      // 将模板进行编译 - 生成虚拟DOM - 挂载到真实DOM上
       if (options.el) {
         vm.$mount(options.el);
       }
@@ -969,13 +1056,22 @@
      */
     Vue.prototype._render = function () {
       var vm = this;
-      console.log(vm.$options.render);
-      return vm.$options.render.call(vm);
+      var vNode = vm.$options.render.call(vm);
+      console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
+      return vNode;
     };
-    Vue.prototype._update = function (vNode) {
-      console.log("生成的虚拟DOM节点为", vNode);
 
-      // 读取即将要挂载的真实DOM节点
+    /**
+     * _update方法的核心就是将上一步执行render函数生成的虚拟DOM vNode转化为真实DOM
+     * 它的核心就是调用一个核心方法patch，通过递归调用createElement方法来生成
+     * 真实的元素节点和文本节点
+     */
+    Vue.prototype._update = function (vNode) {
+      /* 
+        首次渲染，vm.$el的值是基于用户传入的el获取到的DOM元素对象
+        用于将生成的真实DOM替换此DOM元素，同时会在patch完成之后给vm.$el赋值给新的真实DOM
+          之后更新，vm.$el的值就变成了上一次生成的真实DOM
+      */
       var vm = this;
       var element = vm.$el;
 
@@ -988,6 +1084,7 @@
 
       var truthDom = patch(element, vNode);
       vm.$el = truthDom;
+      console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM", truthDom);
     };
 
     /* 生成虚拟DOM元素节点 */
@@ -1048,12 +1145,11 @@
 
     // 创建真实元素节点
     if (typeof tag === "string") {
-      // 虚拟DOM和真实DOM连接起来
+      // 虚拟DOM和真实DOM连接起来,后续如果修改属性了，可以直接找到虚拟节点对应的真实节点修改
       vNode.el = document.createElement(tag);
 
       // 给节点属性赋值
       patchProps(props, vNode.el);
-      console.dir(vNode.el);
 
       // 给节点添加子节点
       children.forEach(function (childvNode) {
@@ -1076,7 +1172,7 @@
       if (key === "style") {
         var styleObj = props.style;
         for (var _key in styleObj) {
-          element.style.key = styleObj[_key];
+          element.style[_key] = styleObj[_key];
         }
       } else {
         element.setAttribute(key, props[key]);

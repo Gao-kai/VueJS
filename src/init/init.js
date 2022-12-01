@@ -14,6 +14,7 @@ export function initMixin(Vue) {
     // 开始初始化options中的各个状态 data - props - methods...
     initState(vm);
 
+    // 将模板进行编译 - 生成虚拟DOM - 挂载到真实DOM上
     if (options.el) {
       vm.$mount(options.el);
     }

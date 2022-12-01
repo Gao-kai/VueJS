@@ -32,13 +32,22 @@
       });
       console.log("手动创建的Vue实例---vm：", vm);
 
-    //   可以手动强制更新，但是你不能每次我要更新vm上的属性之后都手动调用一次vm._update(vm._render());
-    setTimeout(()=>{
-        vm.age = 20;
-        vm.name = "FOX---";
-        vm._update(vm._render());
-    },1000)
-      
+      /* 
+        1. 验证直接给vm实例赋值是否会触发set拦截
+        vm.name => 属性代理 => vm._data.name => data.name => 属性劫持 => 触发name属性的setter劫持 => log
+
+        vm.name = "Demo";
+      */
+
+      /* 
+        2. 验证直接给属性赋值一个新的对象是否会重新进行属性劫持
+        vm.address => 属性代理 => vm._data.address => data.address => 属性劫持 => 触发name属性的setter劫持 => 对newValue进行再次劫持 => observe(newValue)
+
+        vm.address = {
+          country:'China',
+          provice:'四川'
+        }
+      */
     </script>
   </body>
 </html>

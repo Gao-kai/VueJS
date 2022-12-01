@@ -25,14 +25,23 @@ export function initLifeCycle(Vue) {
    */
   Vue.prototype._render = function () {
     const vm = this;
-    console.log(vm.$options.render);
-    return vm.$options.render.call(vm);
+    let vNode= vm.$options.render.call(vm);
+    console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
+    return vNode;
   };
 
+  /**
+   * _update方法的核心就是将上一步执行render函数生成的虚拟DOM vNode转化为真实DOM
+   * 它的核心就是调用一个核心方法patch，通过递归调用createElement方法来生成
+   * 真实的元素节点和文本节点
+   */
   Vue.prototype._update = function (vNode) {
-    console.log("生成的虚拟DOM节点为", vNode);
+    /* 
+      首次渲染，vm.$el的值是基于用户传入的el获取到的DOM元素对象
+      用于将生成的真实DOM替换此DOM元素，同时会在patch完成之后给vm.$el赋值给新的真实DOM
 
-    // 读取即将要挂载的真实DOM节点
+      之后更新，vm.$el的值就变成了上一次生成的真实DOM
+    */
     const vm = this;
     const element = vm.$el;
 
@@ -45,6 +54,7 @@ export function initLifeCycle(Vue) {
 
     let truthDom = patch(element, vNode);
     vm.$el = truthDom;
+    console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
   };
 
   /* 生成虚拟DOM元素节点 */
@@ -105,12 +115,11 @@ function createElement(vNode) {
 
   // 创建真实元素节点
   if (typeof tag === "string") {
-    // 虚拟DOM和真实DOM连接起来
+    // 虚拟DOM和真实DOM连接起来,后续如果修改属性了，可以直接找到虚拟节点对应的真实节点修改
     vNode.el = document.createElement(tag);
 
     // 给节点属性赋值
     patchProps(props, vNode.el);
-    console.dir(vNode.el);
 
     // 给节点添加子节点
     children.forEach((childvNode) => {
@@ -134,7 +143,7 @@ function patchProps(props, element) {
     if (key === "style") {
       let styleObj = props.style;
       for (const key in styleObj) {
-        element.style.key = styleObj[key];
+        element.style[key] = styleObj[key];
       }
     } else {
       element.setAttribute(key, props[key]);

@@ -8,7 +8,7 @@ import {codeGenerator} from './codeGenerator.js';
  * @return {Function} render函数
  */
 export function compileToFunction(templateString){
-    console.log('原始模板字符串 =====>\n',templateString);
+    // console.log('原始模板字符串 =====>\n',templateString);
     
     /* 
         1. 模板编译第一步：解析HTML模板字符串templateString为AST抽象语法树
