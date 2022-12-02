@@ -156,16 +156,53 @@
       this.subs = [];
     }
 
-    // dep进行依赖收集
+    /**
+     * 属性getter时：属性的dep对其依赖的watcher进行依赖收集，收集时需要去重
+     */
     _createClass(Dep, [{
       key: "depend",
-      value: function depend(watcher) {
+      value: function depend() {
+        /* 
+            这一行代码的作用：
+            1. Dep.target是唯一的，它的值是一个读取name属性的watcher
+            2. this是当前属性关联的依赖收集器dep的实例
+            3. addDep是watcher实例用来记录dep的方法
+            4. addSub是dep实例用来进行依赖收集watcher的方法
+            5. 会实现双向记录和双向去重的方法
+        */
+        Dep.target.addDep(this);
+
+        // 无脑push 不会去重 --- this.subs.push(watcher); 
+      }
+
+      /**
+      * @param {Object} watcher
+      * 给属性的dep收集器记录收集了多少个watcher，并将watcher存放在subs数组中
+      * 其实就是记录这个属性有多少个组件模板在引用
+      */
+    }, {
+      key: "addSub",
+      value: function addSub(watcher) {
         this.subs.push(watcher);
+      }
+
+      /**
+       * 属性setter时：属性的dep对其依赖的watcher进行通知，让watcher依次进行更新
+       */
+    }, {
+      key: "notify",
+      value: function notify() {
+        this.subs.forEach(function (watcher) {
+          watcher.update();
+        });
       }
     }]);
     return Dep;
-  }(); // 给Dep类添加一个静态属性target，表示依赖收集的目标，初始化为null
-  // 静态属性就代表Dep上只有一份
+  }();
+  /* 
+      1. 给Dep类添加一个静态属性target，表示依赖收集的目标，初始化为null
+      2. 静态属性就代表Dep上只有一份
+  */
   Dep.target = null;
 
   // 传递过来的是data引用空间
@@ -232,14 +269,15 @@
     // 递归劫持 如果对象的属性值还是一个对象
     observe(value);
 
-    // 每一个属性key都有一个依赖收集器dep
+    // 每一个属性key都有一个依赖收集器dep 闭包不销毁
     var dep = new Dep();
+    console.log('dep-key', key, dep);
     Object.defineProperty(target, key, {
       // 拦截取值操作
       get: function get() {
         console.log("\u62E6\u622A\u4E86\u5C5E\u6027 ".concat(key, " \u8BFB\u53D6\u64CD\u4F5C\uFF0C\u5F53\u524D\u5C5E\u6027\u7684\u503C\u662F").concat(value));
         /* 
-        	如果Dep.target有值
+        	如果Dep.target有值,则进行依赖收集：
         	1. 说明有一个渲染watcher实例调用了get方法执行渲染
         	2. 并且将自身实例放在了Dep.target属性上
         	3. 那么我们需要让属性依赖收集器dep记住这个watcher
@@ -258,6 +296,9 @@
         // 如果新赋的值是一个新的对象 还需要递归劫持
         observe(newValue);
         value = newValue;
+
+        // 属性值被修改的时候，当前属性的依赖收集器dep通知其收集的依赖watcher进行更新渲染
+        dep.notify();
       }
     });
   }
@@ -853,35 +894,80 @@
   var id = 0;
   var Watcher = /*#__PURE__*/function () {
     /* 
-        1. vm：需要告诉我当前这个watcher实例是那个vm实例的
-        2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
-        3. options 值为true的时候表示要创建一个渲染watcher
-    */
+          1. vm：需要告诉我当前这个watcher实例是那个vm实例的
+          2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
+          3. options 值为true的时候表示要创建一个渲染watcher
+          4. deps 存放当前watcher被哪些属性的dep所收集
+      */
     function Watcher(vm, fn, options) {
       _classCallCheck(this, Watcher);
       this.id = id++;
       this.renderWatcher = options;
       this.getter = fn;
+      this.deps = [];
+      this.depsId = new Set();
       this.get();
     }
 
     /* 
-        执行get方法的流程：
-        0. 将当前watcher实例放到Dep.target属性上
-        1. this.getter();
-        2. 调用渲染逻辑updateComponent
-        3. 调用_update和_render
-        4. 调用_render的时候去vm上读取属性值
-        5. 触发getter，判断是否Dep.target有值，如果有值，执行dep依赖收集方法depend
-          name => dep.depned => [watcher]
-        age => dep.depend => [watcher]
-    */
+          执行get方法的流程：
+          0. 将当前watcher实例放到Dep.target属性上
+          1. this.getter();
+          2. 调用渲染逻辑updateComponent
+          3. 调用_update和_render
+          4. 调用_render的时候去vm上读取属性值
+          5. 触发getter，判断是否Dep.target有值，如果有值，执行dep依赖收集方法depend
+            name => dep.depned => [watcher]
+          age => dep.depend => [watcher]
+      */
     _createClass(Watcher, [{
       key: "get",
       value: function get() {
+        // 将watcher实例赋值给Dep.target静态属性
         Dep.target = this;
+
+        // 执行this.getter方法就会读取vm.data上的属性，触发属性的getter，进行依赖收集
         this.getter();
+
+        // 必须清空 否则会导致不被模板依赖的属性发生getter的时候也被收集
         Dep.target = null;
+      }
+
+      /**
+       * watcher实例记录dep依赖收集器的方法
+       * 
+       * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
+       * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
+       * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
+       *    那么会触发两次name的getter
+       *    就会触发两次name属性的dep.depend方法
+       *    就会触发两次Dep.target.addDep(this);
+       *    就等于执行了两次watcher实例的addDep方法；
+       *    如果不去重，此watcher实例内部的deps就会记录到重复的name属性的dep
+       */
+    }, {
+      key: "addDep",
+      value: function addDep(dep) {
+        var depId = dep.id;
+        // 基于set去重：如果dep的id没有存在于depIds的set中，那么才进行记录
+        if (!this.depsId.has(depId)) {
+          // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
+          this.deps.push(dep);
+          this.depsId.add(depId);
+
+          // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
+          dep.addSub(this);
+        }
+      }
+
+      /* 
+        调用update就会执行get方法
+        重新走执行get方法的流程如上所示
+      */
+    }, {
+      key: "update",
+      value: function update() {
+        this.get();
       }
     }]);
     return Watcher;

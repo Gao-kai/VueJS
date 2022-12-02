@@ -31,22 +31,25 @@
 import Dep from "./dep";
 
 let id = 0;
-class Watcher{
-
-    /* 
+class Watcher {
+  /* 
         1. vm：需要告诉我当前这个watcher实例是那个vm实例的
         2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
         3. options 值为true的时候表示要创建一个渲染watcher
+        4. deps 存放当前watcher被哪些属性的dep所收集
     */
-    constructor(vm,fn,options){
-        this.id = id++;
-        this.renderWatcher = options;
-        this.getter = fn;
+  constructor(vm, fn, options) {
+    this.id = id++;
+    this.renderWatcher = options;
+    this.getter = fn;
 
-        this.get();
-    }
+    this.deps = [];
+    this.depsId = new Set();
 
-    /* 
+    this.get();
+  }
+
+  /* 
         执行get方法的流程：
         0. 将当前watcher实例放到Dep.target属性上
         1. this.getter();
@@ -58,11 +61,50 @@ class Watcher{
         name => dep.depned => [watcher]
         age => dep.depend => [watcher]
     */
-    get(){
-        Dep.target = this;
-        this.getter();
-        Dep.target = null;
+  get() {
+    // 将watcher实例赋值给Dep.target静态属性
+    Dep.target = this;
+
+    // 执行this.getter方法就会读取vm.data上的属性，触发属性的getter，进行依赖收集
+    this.getter();
+
+    // 必须清空 否则会导致不被模板依赖的属性发生getter的时候也被收集
+    Dep.target = null;
+  }
+
+  /**
+   * watcher实例记录dep依赖收集器的方法
+   * 
+   * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
+   * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
+   * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
+   *    那么会触发两次name的getter
+   *    就会触发两次name属性的dep.depend方法
+   *    就会触发两次Dep.target.addDep(this);
+   *    就等于执行了两次watcher实例的addDep方法；
+   *    如果不去重，此watcher实例内部的deps就会记录到重复的name属性的dep
+   */
+  addDep(dep){
+    const depId = dep.id;
+    // 基于set去重：如果dep的id没有存在于depIds的set中，那么才进行记录
+    if(!this.depsId.has(depId)){
+        // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
+        this.deps.push(dep);
+
+        this.depsId.add(depId);
+
+        // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
+        dep.addSub(this);
     }
+  }
+
+  /* 
+    调用update就会执行get方法
+    重新走执行get方法的流程如上所示
+  */
+  update(){
+    this.get();
+  }
 }
 
 export default Watcher;

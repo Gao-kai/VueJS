@@ -61,15 +61,16 @@ function defineReactive(target, key, value) {
 	// 递归劫持 如果对象的属性值还是一个对象
 	observe(value);
 
-	// 每一个属性key都有一个依赖收集器dep
+	// 每一个属性key都有一个依赖收集器dep 闭包不销毁
 	let dep = new Dep();
+	console.log('dep-key',key,dep);
 
 	Object.defineProperty(target, key, {
 		// 拦截取值操作
 		get() {
 			console.log(`拦截了属性 ${key} 读取操作，当前属性的值是${value}`);
 			/* 
-				如果Dep.target有值
+				如果Dep.target有值,则进行依赖收集：
 				1. 说明有一个渲染watcher实例调用了get方法执行渲染
 				2. 并且将自身实例放在了Dep.target属性上
 				3. 那么我们需要让属性依赖收集器dep记住这个watcher
@@ -88,6 +89,9 @@ function defineReactive(target, key, value) {
 			// 如果新赋的值是一个新的对象 还需要递归劫持
 			observe(newValue);
 			value = newValue;
+
+			// 属性值被修改的时候，当前属性的依赖收集器dep通知其收集的依赖watcher进行更新渲染
+			dep.notify();
 			
 		}
 	})
