@@ -1130,21 +1130,135 @@
     new Watcher(vm, updateComponent, true);
   }
 
+  // 策略对象集 最后会得到key为各生命周期函数名 value为生命周期函数的对象
+  var strats = {};
+  var LIFECYCLE = ["beforeCreate", "created", "beforeMount", "mounted", "beforeUpdate", "updated", "beforeDestroy", "destroyed"];
+
+  /* 
+    这里只是生命周期的策略，后续我们可以自定义任意策略：
+    strats.data = function(){};
+    strats.computed = function(){};
+    strats.watch = function(){};
+    ....
+  */
+
+  function makeStrats(stratsList) {
+    stratsList.forEach(function (hook) {
+      strats[hook] = function (oldValue, newValue) {
+        if (newValue) {
+          if (oldValue) {
+            return oldValue.concat(newValue);
+          } else {
+            return [newValue];
+          }
+        } else {
+          return oldValue;
+        }
+      };
+    });
+  }
+  makeStrats(LIFECYCLE);
+
+  /**
+   * 将用户传入的options和Vue.options合并，并将合并的结果再次赋值给Vue.options
+   * @param {*} oldOptions Vue.options全局配置
+   * @param {*} newOptions 用户传入的options
+   * 
+   * {} {created:fn1} => {created:[fn1]}
+   * 
+   * {created :[fn1]}  {created:fn2} => {created:[fn1,fn2]}
+   * 
+   */
+  function mergeOptions(oldOptions, newOptions) {
+    var options = {};
+
+    /* 
+    	假设目前定义了a、b、c三种策略，属性d没有策略
+    
+    	先以oldOptions也就是Vue.options上的key为基准，和当前的newOption进行合并
+    	Vue.options = {a:[1],b:[2]}
+    	newOptions = {a:3,c:4，d:5}
+    	这一轮过后由于以Vue.options上的key为基准，所以只会将属性a和b进行合并
+    	而newOptions中的属性c并不会合并，变为：
+    	Vue.options = {a:[1,3],b:[2]}
+    	这一轮过后所有Vue.options中的key都会被处理，要不创建新数组包裹要不数组合并
+    */
+    for (var key in oldOptions) {
+      mergeField(key);
+    }
+
+    /* 
+    	再以newOptions上的key为基准，和当前的Vue.options中的key进行合并
+    	Vue.options = {a:[1,3],b:[2]}
+    	newOptions = {a:3,c:4}
+    	在上一轮已经合并过的a属性不会再被合并了，只合并c属性，d属性没有策略直接取newOptions的
+    	合并结果为：
+    	Vue.options = {a:[1,3],b:[2]，c:[4],d:5}
+    */
+    for (var _key in newOptions) {
+      if (!oldOptions.hasOwnProperty(_key)) {
+        mergeField(_key);
+      }
+    }
+
+    // 策略模式减少if - else 避免写很多if条件
+    function mergeField(key) {
+      // 有策略优先走策略 说明我定义好了如何处理的策略
+      if (strats[key]) {
+        options[key] = strats[key](oldOptions[key], newOptions[key]);
+      } else {
+        // 如果没有策略那么以传入的newOptions中的key的值为主
+        options[key] = newOptions[key] || oldOptions[key];
+      }
+    }
+    return options;
+  }
+
+  function callHook(vm, hook) {
+    var hookList = vm.$options[hook];
+    if (Array.isArray(hookList)) {
+      // 所有生命周期函数的this都是实例本身
+      hookList.forEach(function (hook) {
+        return hook.call(vm);
+      });
+    }
+  }
+
   function initMixin(Vue) {
     /* 在这里给Vue原型拓展两个方法 */
     Vue.prototype._init = function (options) {
       // 给生成的实例上挂载$options用于在其他地方获取用户传入的配置
       var vm = this;
 
-      // 将用户传入的options挂载到实例对象上 方便其他地方拿到
-      vm.$options = options;
+      /**
+       * options是用户传入的配置项
+       * this.constructor.options是全局Vue上的静态options对象
+       *
+       * Vue.mixin的作用就是将全局的配置项合并成为一个对象，将相同key的值放入一个数组中
+       * Vue的实例在初始化的时候会再次将用户自己传入的配置项和之前全局的配置对象二次进行合并
+       * 这样做的好处是我们定义的全局Vue的filter、指令、组件component等最终都会挂载到每一个Vue的实例$options属性上
+       * 供Vue的实例this进行调用 这就是为什么全局的过滤器、组件在任意地方都可以访问调用的原因
+       * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
+       */
+      vm.$options = mergeOptions(this.constructor.options, options);
+      console.log(vm.$options);
+      // data未初始化前调用beforeCreate生命周期函数
+      callHook(vm, "beforeCreate");
 
       // 开始初始化options中的各个状态 data - props - methods...
       initState(vm);
 
+      // data初始化完成之后调用created生命周期函数
+      callHook(vm, "created");
+
       // 将模板进行编译 - 生成虚拟DOM - 挂载到真实DOM上
       if (options.el) {
+        // 未挂载到DOM上前调用beforeMount生命周期函数
+        callHook(vm, 'beforeMount');
         vm.$mount(options.el);
+
+        // DOM挂载完成调用mounted生命周期函数
+        callHook(vm, 'mounted');
       }
     };
     Vue.prototype.$mount = function (elementSelector) {
@@ -1178,11 +1292,11 @@
 
       /**
        * 组件的挂载
-       * 
+       *
        * 1. 执行上一步模板编译时生成的render函数，得到一个虚拟DOM对象
        * 2. 将虚拟DOM对象更新到element 真实DOM元素上
        * 3. render函数已经在上一步模板编译完成之后挂载到了options对象上，通过参数vm.$options获取
-       * 
+       *
        */
       mountComponent(vm, element);
     };
@@ -1397,6 +1511,27 @@
     }
   }
 
+  function initGlobalApi(Vue) {
+    // 原型挂载核心API
+    Vue.prototype.$nextTick = nextTick;
+
+    /* Vue类的静态全局配置对象 */
+    Vue.options = {};
+
+    /**
+    * 调用 一次mixin，就把选项中的created取出来挂到Vue.options的created数组
+    * 
+    * 将全局的Vue.options对象和用户传入的mixinOptions进行合并
+    * 合并完成之后将结果赋值给全局Vue.options对象对应的key的数组上
+    * @param {Object} mixinOptions
+    */
+    Vue.mixin = function (mixinOptions) {
+      this.options = mergeOptions(this.options, mixinOptions);
+      // 链式调用
+      return this;
+    };
+  }
+
   /* 打包入口文件 */
 
   // Vue构造函数
@@ -1404,14 +1539,14 @@
     this._init(options);
   }
 
-  // 原型挂载核心方法$nextTick
-  Vue.prototype.$nextTick = nextTick;
-
   // 给Vue类拓展初始化options的方法
   initMixin(Vue);
 
   // 模板编译 组件挂载
   initLifeCycle(Vue);
+
+  // 全局API
+  initGlobalApi(Vue);
 
   return Vue;
 
