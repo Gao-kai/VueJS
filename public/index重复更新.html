@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mini Vue手写实现</title>
+    <!-- 手写实现 -->
+    <script src="/dist/mini-vue/vue.js"></script>
+
+    <!-- Vue2.0 源码 -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
+  </head>
+  <body>
+    <div id="app">
+      <div style="color: pink; font-size: 18px" key="123">{{name}} hello</div>
+      <span>{{age}}</span>
+      <p>{{address.country}}</p>
+    </div>
+
+    <script>
+      const vm = new Vue({
+        el: "#app",
+        data() {
+          return {
+            name: "GeoGusser",
+            age: "18",
+            address: {
+              country: "China",
+              provice: "甘肃",
+            },
+          };
+        },
+      });
+      console.log("手动创建的Vue实例---vm：", vm);
+
+      /* 
+        1. 1个组件中多个属性同步更新
+
+        假设在同一个组件中连续更新了name和age属性，会触发多次setter，触发多次更新
+        我们希望只触发一次(基于缓存和去重)
+      */
+      setTimeout(()=>{
+        vm.name = "FOX---";
+        vm.age = 20;
+        vm.name = "COX---";
+        vm.age = 60;
+        vm.name = "BOX---";
+        vm.age = 80;
+    },1000)
+
+
+    /*
+        2. 如下所示：
+        <App>
+            <Header :userName="name"></Header>    
+            <Footer :userName="name"></Footer>    
+        </App> 
+
+        name属性dep中收集到了Header和Footer的watcher
+        当name属性被赋值，触发setter就会通知属性各自的watcher进行更新
+
+        如果我们连续对name属性赋值两次，那么就会引起两次setter两次更新
+        那么也就是说Header和Footer的watcher都会更新两次
+
+        我们的任务就是让Header和Footer的视图只更新一次
+     */
+    </script>
+  </body>
+</html>

@@ -63,12 +63,12 @@ function defineReactive(target, key, value) {
 
 	// 每一个属性key都有一个依赖收集器dep 闭包不销毁
 	let dep = new Dep();
-	console.log('dep-key',key,dep);
+	// console.log('dep-key',key,dep);
 
 	Object.defineProperty(target, key, {
 		// 拦截取值操作
 		get() {
-			console.log(`拦截了属性 ${key} 读取操作，当前属性的值是${value}`);
+			// console.log(`拦截了属性 ${key} 读取操作，当前属性的值是${value}`);
 			/* 
 				如果Dep.target有值,则进行依赖收集：
 				1. 说明有一个渲染watcher实例调用了get方法执行渲染
@@ -83,7 +83,7 @@ function defineReactive(target, key, value) {
 		},
 		// 拦截赋值操作
 		set(newValue) {
-			console.log(`拦截了属性 ${key} 存值操作，新属性的值是${newValue}`);
+			// console.log(`拦截了属性 ${key} 存值操作，新属性的值是${newValue}`);
 			if (newValue === value) return;
 
 			// 如果新赋的值是一个新的对象 还需要递归劫持

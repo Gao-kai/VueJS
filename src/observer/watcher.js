@@ -29,6 +29,7 @@
 
 */
 import Dep from "./dep";
+import { nextTick } from './nextTick.js';
 
 let id = 0;
 class Watcher {
@@ -74,7 +75,7 @@ class Watcher {
 
   /**
    * watcher实例记录dep依赖收集器的方法
-   * 
+   *
    * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
    * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
    * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
@@ -84,17 +85,17 @@ class Watcher {
    *    就等于执行了两次watcher实例的addDep方法；
    *    如果不去重，此watcher实例内部的deps就会记录到重复的name属性的dep
    */
-  addDep(dep){
+  addDep(dep) {
     const depId = dep.id;
     // 基于set去重：如果dep的id没有存在于depIds的set中，那么才进行记录
-    if(!this.depsId.has(depId)){
-        // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
-        this.deps.push(dep);
+    if (!this.depsId.has(depId)) {
+      // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
+      this.deps.push(dep);
 
-        this.depsId.add(depId);
+      this.depsId.add(depId);
 
-        // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
-        dep.addSub(this);
+      // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
+      dep.addSub(this);
     }
   }
 
@@ -102,9 +103,61 @@ class Watcher {
     调用update就会执行get方法
     重新走执行get方法的流程如上所示
   */
-  update(){
+  update() {
+    // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
+    queneWatcher(this);
+  }
+
+  run(){
     this.get();
   }
+}
+
+/**
+ * 将需要更新的watcher缓存到队列中
+ * @param {*} watcher
+ */
+let quene = []; // 缓存即将要更新的watcher队列
+let has = {}; // 基于对象去重
+let pending = false; // 实现防抖
+function queneWatcher(watcher) {
+  console.log("queneWatcher执行")
+  const id = watcher.id;
+  if (!has[id]) {
+    // 将需要更新视图的watcher先暂存到队列中
+    quene.push(watcher);
+    has[id] = true;
+    console.log("当前保存watcher的队列为", quene);
+
+    if (!pending) {
+      // 同步任务结束之后 依次调用watcher的run方法 然后清空缓存的watcher
+
+      // --- setTimeout(flushSchedulerQuene, 0);
+      nextTick(flushSchedulerQuene);
+      pending = true;
+    }
+  }
+}
+
+/* 
+  刷新调度队列
+ 把缓存在队列中的watcher拿出来，依次执行每一个watcher的更新视图操作
+*/
+function flushSchedulerQuene() {
+  let flushWatcherQuene = quene.slice(0);
+
+  // 清空队列
+  quene = [];
+  // 清空缓存
+  has = {};
+  // 重置pending 防止在下面run的时候产生了新的watcher 可以保证继续放入到队列quene中
+  pending = false;
+
+  // 依次执行watcher的run方法更新视图
+  flushWatcherQuene.forEach(watcher=>{
+		watcher.run();
+	});
+  
 }
 
 export default Watcher;

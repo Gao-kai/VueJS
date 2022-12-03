@@ -26,7 +26,7 @@ export function initLifeCycle(Vue) {
   Vue.prototype._render = function () {
     const vm = this;
     let vNode= vm.$options.render.call(vm);
-    console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
+    // console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
     return vNode;
   };
 
@@ -54,7 +54,7 @@ export function initLifeCycle(Vue) {
 
     let truthDom = patch(element, vNode);
     vm.$el = truthDom;
-    console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
+    // console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
   };
 
   /* 生成虚拟DOM元素节点 */

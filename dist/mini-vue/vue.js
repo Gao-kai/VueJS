@@ -271,11 +271,12 @@
 
     // 每一个属性key都有一个依赖收集器dep 闭包不销毁
     var dep = new Dep();
-    console.log('dep-key', key, dep);
+    // console.log('dep-key',key,dep);
+
     Object.defineProperty(target, key, {
       // 拦截取值操作
       get: function get() {
-        console.log("\u62E6\u622A\u4E86\u5C5E\u6027 ".concat(key, " \u8BFB\u53D6\u64CD\u4F5C\uFF0C\u5F53\u524D\u5C5E\u6027\u7684\u503C\u662F").concat(value));
+        // console.log(`拦截了属性 ${key} 读取操作，当前属性的值是${value}`);
         /* 
         	如果Dep.target有值,则进行依赖收集：
         	1. 说明有一个渲染watcher实例调用了get方法执行渲染
@@ -290,7 +291,7 @@
       },
       // 拦截赋值操作
       set: function set(newValue) {
-        console.log("\u62E6\u622A\u4E86\u5C5E\u6027 ".concat(key, " \u5B58\u503C\u64CD\u4F5C\uFF0C\u65B0\u5C5E\u6027\u7684\u503C\u662F").concat(newValue));
+        // console.log(`拦截了属性 ${key} 存值操作，新属性的值是${newValue}`);
         if (newValue === value) return;
 
         // 如果新赋的值是一个新的对象 还需要递归劫持
@@ -891,6 +892,86 @@
     return renderFn;
   }
 
+  /* 
+      nextTick并没有直接采用某一个API 
+      而是采用了优雅降级的方式来实现
+      并且这里采用了一个策略模式来实现给timerFunction的赋值
+
+      原则为尽可能快的看到视图发生刷新：
+      Promise.resolve()
+      MutationObserver
+      setImmediate
+      setTimeout
+
+  */
+  var timerFunction = null;
+  function getTimerFunction() {
+    if (Promise && typeof Promise === 'function') {
+      timerFunction = function timerFunction() {
+        Promise.resolve().then(flashCallBacks);
+      };
+    } else if (MutationObserver) {
+      var mutationOb = new MutationObserver(flashCallBacks);
+      var textNode = document.createTextNode(1);
+      mutationOb.observe(textNode, {
+        characterData: true
+      });
+      timerFunction = function timerFunction() {
+        textNode.textContent = 2;
+      };
+    } else if (setImmediate) {
+      timerFunction = function timerFunction() {
+        setImmediate(flashCallBacks);
+      };
+    } else {
+      timerFunction = function timerFunction() {
+        setTimeout(flashCallBacks, 0);
+      };
+    }
+  }
+  getTimerFunction();
+
+  /**
+   * 异步批处理
+   */
+  var callBacks = [];
+  var waiting = false;
+  function nextTick(callback) {
+    console.log('nextTick执行，先缓存callback\n', callback);
+
+    // 异步批处理：先在这里全部缓存起来
+    callBacks.push(callback);
+    if (!waiting) {
+      /* 
+          等到时间到了才依次将任务取出执行
+          cb() => 
+          flushSchedulerQuene() => 
+          flushWatcherQuene.forEach(watcher=>{watcher.run();}) =>
+          watcher.get() 视图更新
+      */
+      /*  
+           setTimeout(()=>{
+               flashCallBacks();
+           },0) 
+           waiting = true;
+       */
+      timerFunction();
+      waiting = true;
+    }
+  }
+
+  /* 
+      将任务队列中任务取出依次执行
+  */
+  function flashCallBacks() {
+    var cbs = callBacks.slice(0);
+    callBacks = [];
+    waiting = false;
+    cbs.forEach(function (cb) {
+      cb();
+    });
+  }
+
   var id = 0;
   var Watcher = /*#__PURE__*/function () {
     /* 
@@ -935,7 +1016,7 @@
 
       /**
        * watcher实例记录dep依赖收集器的方法
-       * 
+       *
        * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
        * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
        * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
@@ -967,11 +1048,61 @@
     }, {
       key: "update",
       value: function update() {
+        // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
+        queneWatcher(this);
+      }
+    }, {
+      key: "run",
+      value: function run() {
         this.get();
       }
     }]);
     return Watcher;
   }();
+  /**
+   * 将需要更新的watcher缓存到队列中
+   * @param {*} watcher
+   */
+  var quene = []; // 缓存即将要更新的watcher队列
+  var has = {}; // 基于对象去重
+  var pending = false; // 实现防抖
+  function queneWatcher(watcher) {
+    console.log("queneWatcher执行");
+    var id = watcher.id;
+    if (!has[id]) {
+      // 将需要更新视图的watcher先暂存到队列中
+      quene.push(watcher);
+      has[id] = true;
+      console.log("当前保存watcher的队列为", quene);
+      if (!pending) {
+        // 同步任务结束之后 依次调用watcher的run方法 然后清空缓存的watcher
+
+        // --- setTimeout(flushSchedulerQuene, 0);
+        nextTick(flushSchedulerQuene);
+        pending = true;
+      }
+    }
+  }
+
+  /* 
+    刷新调度队列
+   把缓存在队列中的watcher拿出来，依次执行每一个watcher的更新视图操作
+  */
+  function flushSchedulerQuene() {
+    var flushWatcherQuene = quene.slice(0);
+
+    // 清空队列
+    quene = [];
+    // 清空缓存
+    has = {};
+    // 重置pending 防止在下面run的时候产生了新的watcher 可以保证继续放入到队列quene中
+    pending = false;
+
+    // 依次执行watcher的run方法更新视图
+    flushWatcherQuene.forEach(function (watcher) {
+      watcher.run();
+    });
+  }
 
   /**
    * 
@@ -1143,7 +1274,7 @@
     Vue.prototype._render = function () {
       var vm = this;
       var vNode = vm.$options.render.call(vm);
-      console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
+      // console.log("_render函数执行，生成的虚拟DOM节点为", vNode);
       return vNode;
     };
 
@@ -1170,7 +1301,7 @@
 
       var truthDom = patch(element, vNode);
       vm.$el = truthDom;
-      console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM", truthDom);
+      // console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
     };
 
     /* 生成虚拟DOM元素节点 */
@@ -1272,6 +1403,9 @@
   function Vue(options) {
     this._init(options);
   }
+
+  // 原型挂载核心方法$nextTick
+  Vue.prototype.$nextTick = nextTick;
 
   // 给Vue类拓展初始化options的方法
   initMixin(Vue);

@@ -12,7 +12,7 @@
   <body>
     <div id="app">
       <div style="color: pink; font-size: 18px" key="123">{{name}} hello</div>
-      <span>{{age}} -- {{age}} -- {{age}}</span>
+      <span>{{age}}</span>
       <p>{{address.country}}</p>
     </div>
 
@@ -32,26 +32,51 @@
       });
       console.log("手动创建的Vue实例---vm：", vm);
 
-    /* 
-      可以手动强制更新 vm._update(vm._render());
-      但是你不能每次我要更新vm上的属性之后都手动调用一次vm._update(vm._render());
-    */
-   /*  setTimeout(()=>{
-        vm.age = 20;
-        vm.name = "FOX---";
-        vm._update(vm._render());
-    },1000) */
+      /* 
+        1. 明明页面上展示的是Good Job!，但是打印出来的app的DOM节点展示name属性还是GeoGusser，这是为什么呢？
+
+        原因就在于给vm.name赋值的时候，触发setter，然后通知watcher更新视图，但是更新视图的代码是写在异步逻辑中的，而这里的console.log(app.innerHTML);是同步代码，所以读取的是更新前的app的dom节点。
+
+        如何解决呢？我们可以将console.log(app.innerHTML)这行同步代码写在异步任务中，比如定时器宏任务中，基于事件队列可以实现我们想要的效果。
+        
+      */
       
 
-    /* 
-      在实现了属性dep的依赖收集和通知watcher依赖更新之后
-      无需手动调用vm._update(vm._render())这行代码
-      自动在vm的属性发生变化之后在1s之后自动更新视图
-    */
-    setTimeout(()=>{
-        vm.age = 20;
-        vm.name = "FOX---";
-    },1000)
+      //   setTimeout(() => {
+      //     console.log(app.innerHTML);
+      //   }, 0);
+
+      /* 
+        2. 但是如果不是定时器这种宏任务，而是一个Promsie.then的微任务
+        根据微任务总是先清空后才去渲染的原理，又拿不到了
+        我们不能控制用户如何获取，何时获取，那我们该怎么办呢？
+      */
+
+      // Promise.resolve().then(()=>{
+      //   console.log(app.innerHTML);
+      // })
+
+      /* 
+        3. 用户外部使用vm.$nextTick
+           vm.name = "Good Job!"其实会在Vue内部调用nextTick,
+           其实都是一个方法，它们谁顺序在前就谁先执行
+      */
+
+      vm.name = "Good Job!";
+
+      vm.$nextTick(() => {
+        console.log(app.innerHTML);
+      });
+
+      vm.$nextTick(async () => {
+        await console.log(200);
+      });
+
+      vm.$nextTick(() => {
+        console.log(100);
+      });
+
+      vm.age = 100;
     </script>
   </body>
 </html>

@@ -1,10 +1,7 @@
 /* 打包入口文件 */
-import {
-	initMixin
-} from './init/init.js';
-
-import {initLifeCycle} from './lifeCycle/initLifeCycle.js'
-
+import { initMixin } from './init/init.js';
+import { initLifeCycle } from './lifeCycle/initLifeCycle.js'
+import { nextTick } from './observer/nextTick.js';
 
 
 // Vue构造函数
@@ -12,6 +9,8 @@ function Vue(options) {
 	this._init(options);
 }
 
+// 原型挂载核心方法$nextTick
+Vue.prototype.$nextTick = nextTick;
 
 // 给Vue类拓展初始化options的方法
 initMixin(Vue);
