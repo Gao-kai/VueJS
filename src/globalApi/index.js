@@ -17,7 +17,7 @@ export function initGlobalApi(Vue) {
 	 */
     Vue.mixin = function(mixinOptions){
         this.options = mergeOptions(this.options,mixinOptions);
-        // 链式调用
+        // 链式调用返回Vue构造函数
         return this;
     }
 }
