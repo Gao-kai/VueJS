@@ -21,7 +21,8 @@ export function initMixin(Vue) {
      * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
      */
     vm.$options = mergeOptions(this.constructor.options, options);
-    console.log(vm.$options);
+    // console.log(vm.$options);
+    
     // data未初始化前调用beforeCreate生命周期函数
     callHook(vm, "beforeCreate");
 

@@ -11,57 +11,64 @@
   </head>
   <body>
     <div id="app">
-      <div style="color: pink; font-size: 18px" key="123">{{name}} hello</div>
-      <span>{{age}}</span>
-      <p>{{address.country}}</p>
+
+        <h4 style="color: pink">计算属性fullName的值是：{{fullName}}</h2>  
+        <h4 style="color: pink">计算属性fullName的值是：{{fullName}}</h2>  
+            
     </div>
 
     <script>
-      Vue.mixin({
-        created(){
-            console.log('全局混入created1')
-        }
-      })
-
-      Vue.mixin({
-        created(){
-            console.log('全局混入created2')
-        }
-      })
-
-
       const vm = new Vue({
         el: "#app",
         data() {
           return {
-            name: "GeoGusser",
+            fName: "GeoGusser --- ",
+            lName:"图寻社区",
             age: "18",
             address: {
               country: "China",
               provice: "甘肃",
             },
-            hobby:['football','basketball']
+            hobby: ["football", "basketball"],
           };
         },
-        beforeCreate(){
-          console.log('beforeCreate')
-        },
-        created(){
-            console.log('vm实例自身created')
-        },
-        beforeMount(){
-          console.log('beforeMount')
-        },
-        mounted(){
-            console.log('mounted')
-        },
+        computed:{
+            // 函数写法简写
+            fullName(){
+                console.log("计算属性fullName取值1次！！")
+                return this.fName + this.lName;
+            },
+            // 对象写法
+            /* userInfo:{
+                get(){
+                    return this.lName + this.age;
+                },
+                set(newValue){
+                    console.log('newValue',newValue);
+                }
+
+            } */
+        }
       });
       console.log("手动创建的Vue实例---vm：", vm);
-      
 
       /* 
-        Vue.mixin 全局API使用
+        验证计算属性userInfo是否和data中的属性一样会被挂载到vm实例上，供外部访问
       */
+
+      /* setTimeout(()=>{
+        vm.userInfo = vm.lName + 20;
+      },0) */
+
+      /* 
+        验证计算属性fullName所依赖的属性fName和lName发生变化之后，
+        1. 计算属性是否会变脏
+        2. 是否会引起fullName所依赖的模板(watcher)重新渲染
+      */
+
+       setTimeout(()=>{
+        vm.fName = "hahaha"
+      },1000)
     </script>
   </body>
 </html>

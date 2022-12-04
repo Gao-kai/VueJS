@@ -28,8 +28,8 @@
     最后会触发属性的getter
 
 */
-import Dep from "./dep";
-import { nextTick } from './nextTick.js';
+import Dep, { pushTarget, popTarget } from "./dep";
+import { nextTick } from "./nextTick.js";
 
 let id = 0;
 class Watcher {
@@ -38,6 +38,10 @@ class Watcher {
         2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
         3. options 值为true的时候表示要创建一个渲染watcher
         4. deps 存放当前watcher被哪些属性的dep所收集
+        5. depsId 存放当前watcher对应的依赖收集器的id集合
+        6. lazy 标识此watcher的fn是否为懒执行,也就是在new Watcher的时候先不执行
+        7. dirty 标识计算属性的watcher是否为脏 如果是脏的才会在触发计算属性自己getter的时候执行get方法
+        
     */
   constructor(vm, fn, options) {
     this.id = id++;
@@ -47,7 +51,13 @@ class Watcher {
     this.deps = [];
     this.depsId = new Set();
 
-    this.get();
+    this.lazy = options.lazy;
+    this.dirty = this.lazy;
+
+    this.vm = vm;
+
+    /* 控制在new Watcher的时候传入的fn是立即执行还是懒执行 */
+    this.lazy ? null : this.get();
   }
 
   /* 
@@ -64,13 +74,28 @@ class Watcher {
     */
   get() {
     // 将watcher实例赋值给Dep.target静态属性
-    Dep.target = this;
+    //  Dep.target = this;
+    pushTarget(this);
 
-    // 执行this.getter方法就会读取vm.data上的属性，触发属性的getter，进行依赖收集
-    this.getter();
+    /* 
+       执行this.getter方法就会去vm实例上取值，触发属性的getter，进行依赖收集
+       1. 如果执行渲染getter，那么getter中的this本来也就是vm实例（之前通过with绑定的）
+       2. 如果执行计算属性的getter，那么getter中的this必须为vm实例才可以
+    */
+    let value = this.getter.call(this.vm);
+    console.log(
+      "this.getter执行一次，执行的watcher是",
+      this,
+      "\n执行的结果是",
+      value
+    );
 
     // 必须清空 否则会导致不被模板依赖的属性发生getter的时候也被收集
-    Dep.target = null;
+    // Dep.target = null;
+    popTarget(this);
+
+    // 如果是计算属性watcher 执行getter方法需要获取到计算后的返回值
+    return value;
   }
 
   /**
@@ -104,12 +129,44 @@ class Watcher {
     重新走执行get方法的流程如上所示
   */
   update() {
-    // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
-    queneWatcher(this);
+    // 如果计算属性依赖的值发生变化了 就标识计算属性已经是脏值了,就不去走queneWatcher了
+    if (this.lazy) {
+      this.dirty = true;
+    } else {
+      // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
+      queneWatcher(this);
+    }
   }
 
-  run(){
+  run() {
     this.get();
+  }
+
+  /* 
+    计算属性依赖的属性的dep记录Dep.target指向的上一层watcher(渲染watcher)
+    1. 如何通过watcher获取到关联的deps
+    2. 如果让这些deps分别记录到Dep.target
+  */
+  depend() {
+    // 获取有多少个属性的dep记录了此watcher 如果一个计算属性依赖了2个属性fName和lName
+    // 那么fName和lName属性的dep依赖收集器中收集了此watcher
+    for (let i = 0; i < this.deps.length; i++) {
+      const dep = this.deps[i];
+      // 让Dep.target指向的上一层watcher(渲染watcher)也被收集到属性的dep中
+      dep.depend();
+    }
+  }
+
+  /* 
+    evaluate是计算的意思，是专门用来处理计算属性的，有三个作用：
+    1. 执行计算属性watcher的get方法，这个get其实就是计算属性的getter
+    2. 获取到上一步计算后的结果，也就是get方法的返回值，挂载到此watcher的value属性上
+    3. 同时修改此计算顺序watcher的dirty属性
+  */
+  evaluate() {
+    // 获取到用户传入函数的返回值
+    this.value = this.get();
+    this.dirty = false;
   }
 }
 
@@ -121,7 +178,7 @@ let quene = []; // 缓存即将要更新的watcher队列
 let has = {}; // 基于对象去重
 let pending = false; // 实现防抖
 function queneWatcher(watcher) {
-  console.log("queneWatcher执行")
+  console.log("queneWatcher执行");
   const id = watcher.id;
   if (!has[id]) {
     // 将需要更新视图的watcher先暂存到队列中
@@ -154,10 +211,9 @@ function flushSchedulerQuene() {
   pending = false;
 
   // 依次执行watcher的run方法更新视图
-  flushWatcherQuene.forEach(watcher=>{
-		watcher.run();
-	});
-  
+  flushWatcherQuene.forEach((watcher) => {
+    watcher.run();
+  });
 }
 
 export default Watcher;

@@ -62,4 +62,25 @@ class Dep {
 */
 Dep.target = null;
 
+/* 
+    存放渲染watcher和计算属性watcher的栈
+*/
+let stack = [];
+
+/* 
+    将watcher入栈，同时将Dep.target指针指向最新放进来的那个watcher
+*/
+export function pushTarget(watcher){
+    stack.push(watcher);
+    Dep.target = watcher;
+}
+
+/* 
+    将watcher出栈，同时将Dep.target指针指向当前栈顶的那个watcher
+*/
+export function popTarget(){
+    stack.pop();
+    Dep.target = stack[stack.length-1];
+}
+
 export default Dep;

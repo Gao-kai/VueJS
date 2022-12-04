@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mini Vue手写实现</title>
+    <!-- 手写实现 -->
+    <script src="/dist/mini-vue/vue.js"></script>
+
+    <!-- Vue2.0 源码 -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
+  </head>
+  <body>
+    <div id="app">
+      <div style="color: pink; font-size: 18px" key="123">{{name}} hello</div>
+      <span>{{age}}</span>
+      <p>{{address.country}}</p>
+    </div>
+
+    <script>
+      Vue.mixin({
+        created(){
+            console.log('全局混入created1')
+        }
+      })
+
+      Vue.mixin({
+        created(){
+            console.log('全局混入created2')
+        }
+      })
+
+
+      const vm = new Vue({
+        el: "#app",
+        data() {
+          return {
+            name: "GeoGusser",
+            age: "18",
+            address: {
+              country: "China",
+              provice: "甘肃",
+            },
+            hobby:['football','basketball']
+          };
+        },
+        beforeCreate(){
+          console.log('beforeCreate')
+        },
+        created(){
+            console.log('vm实例自身created')
+        },
+        beforeMount(){
+          console.log('beforeMount')
+        },
+        mounted(){
+            console.log('mounted')
+        },
+      });
+      console.log("手动创建的Vue实例---vm：", vm);
+      
+
+      /* 
+        Vue.mixin 全局API使用
+      */
+    </script>
+  </body>
+</html>

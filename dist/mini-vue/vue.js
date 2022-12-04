@@ -205,6 +205,27 @@
   */
   Dep.target = null;
 
+  /* 
+      存放渲染watcher和计算属性watcher的栈
+  */
+  var stack = [];
+
+  /* 
+      将watcher入栈，同时将Dep.target指针指向最新放进来的那个watcher
+  */
+  function pushTarget(watcher) {
+    stack.push(watcher);
+    Dep.target = watcher;
+  }
+
+  /* 
+      将watcher出栈，同时将Dep.target指针指向当前栈顶的那个watcher
+  */
+  function popTarget() {
+    stack.pop();
+    Dep.target = stack[stack.length - 1];
+  }
+
   // 传递过来的是data引用空间
   function observe(data) {
     // 只有对象才可以劫持 如果不是对象 那么不用劫持
@@ -380,6 +401,362 @@
     }
   }
 
+  /* 
+      nextTick并没有直接采用某一个API 
+      而是采用了优雅降级的方式来实现
+      并且这里采用了一个策略模式来实现给timerFunction的赋值
+
+      原则为尽可能快的看到视图发生刷新：
+      Promise.resolve()
+      MutationObserver
+      setImmediate
+      setTimeout
+
+  */
+  var timerFunction = null;
+  function getTimerFunction() {
+    if (Promise && typeof Promise === 'function') {
+      timerFunction = function timerFunction() {
+        Promise.resolve().then(flashCallBacks);
+      };
+    } else if (MutationObserver) {
+      var mutationOb = new MutationObserver(flashCallBacks);
+      var textNode = document.createTextNode(1);
+      mutationOb.observe(textNode, {
+        characterData: true
+      });
+      timerFunction = function timerFunction() {
+        textNode.textContent = 2;
+      };
+    } else if (setImmediate) {
+      timerFunction = function timerFunction() {
+        setImmediate(flashCallBacks);
+      };
+    } else {
+      timerFunction = function timerFunction() {
+        setTimeout(flashCallBacks, 0);
+      };
+    }
+  }
+  getTimerFunction();
+
+  /**
+   * 异步批处理
+   */
+  var callBacks = [];
+  var waiting = false;
+  function nextTick(callback) {
+    console.log('nextTick执行，先缓存callback\n', callback);
+
+    // 异步批处理：先在这里全部缓存起来
+    callBacks.push(callback);
+    if (!waiting) {
+      /* 
+          等到时间到了才依次将任务取出执行
+          cb() => 
+          flushSchedulerQuene() => 
+          flushWatcherQuene.forEach(watcher=>{watcher.run();}) =>
+          watcher.get() 视图更新
+      */
+      /*  
+           setTimeout(()=>{
+               flashCallBacks();
+           },0) 
+           waiting = true;
+       */
+      timerFunction();
+      waiting = true;
+    }
+  }
+
+  /* 
+      将任务队列中任务取出依次执行
+  */
+  function flashCallBacks() {
+    var cbs = callBacks.slice(0);
+    callBacks = [];
+    waiting = false;
+    cbs.forEach(function (cb) {
+      cb();
+    });
+  }
+
+  var id = 0;
+  var Watcher = /*#__PURE__*/function () {
+    /* 
+          1. vm：需要告诉我当前这个watcher实例是那个vm实例的
+          2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
+          3. options 值为true的时候表示要创建一个渲染watcher
+          4. deps 存放当前watcher被哪些属性的dep所收集
+          5. depsId 存放当前watcher对应的依赖收集器的id集合
+          6. lazy 标识此watcher的fn是否为懒执行,也就是在new Watcher的时候先不执行
+          7. dirty 标识计算属性的watcher是否为脏 如果是脏的才会在触发计算属性自己getter的时候执行get方法
+          
+      */
+    function Watcher(vm, fn, options) {
+      _classCallCheck(this, Watcher);
+      this.id = id++;
+      this.renderWatcher = options;
+      this.getter = fn;
+      this.deps = [];
+      this.depsId = new Set();
+      this.lazy = options.lazy;
+      this.dirty = this.lazy;
+      this.vm = vm;
+
+      /* 控制在new Watcher的时候传入的fn是立即执行还是懒执行 */
+      this.lazy ? null : this.get();
+    }
+
+    /* 
+          执行get方法的流程：
+          0. 将当前watcher实例放到Dep.target属性上
+          1. this.getter();
+          2. 调用渲染逻辑updateComponent
+          3. 调用_update和_render
+          4. 调用_render的时候去vm上读取属性值
+          5. 触发getter，判断是否Dep.target有值，如果有值，执行dep依赖收集方法depend
+            name => dep.depned => [watcher]
+          age => dep.depend => [watcher]
+      */
+    _createClass(Watcher, [{
+      key: "get",
+      value: function get() {
+        // 将watcher实例赋值给Dep.target静态属性
+        //  Dep.target = this;
+        pushTarget(this);
+
+        /* 
+           执行this.getter方法就会去vm实例上取值，触发属性的getter，进行依赖收集
+           1. 如果执行渲染getter，那么getter中的this本来也就是vm实例（之前通过with绑定的）
+           2. 如果执行计算属性的getter，那么getter中的this必须为vm实例才可以
+        */
+        var value = this.getter.call(this.vm);
+        console.log("this.getter执行一次，执行的watcher是", this, "\n执行的结果是", value);
+
+        // 必须清空 否则会导致不被模板依赖的属性发生getter的时候也被收集
+        // Dep.target = null;
+        popTarget();
+
+        // 如果是计算属性watcher 执行getter方法需要获取到计算后的返回值
+        return value;
+      }
+
+      /**
+       * watcher实例记录dep依赖收集器的方法
+       *
+       * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
+       * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
+       * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
+       *    那么会触发两次name的getter
+       *    就会触发两次name属性的dep.depend方法
+       *    就会触发两次Dep.target.addDep(this);
+       *    就等于执行了两次watcher实例的addDep方法；
+       *    如果不去重，此watcher实例内部的deps就会记录到重复的name属性的dep
+       */
+    }, {
+      key: "addDep",
+      value: function addDep(dep) {
+        var depId = dep.id;
+        // 基于set去重：如果dep的id没有存在于depIds的set中，那么才进行记录
+        if (!this.depsId.has(depId)) {
+          // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
+          this.deps.push(dep);
+          this.depsId.add(depId);
+
+          // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
+          dep.addSub(this);
+        }
+      }
+
+      /* 
+        调用update就会执行get方法
+        重新走执行get方法的流程如上所示
+      */
+    }, {
+      key: "update",
+      value: function update() {
+        // 如果计算属性依赖的值发生变化了 就标识计算属性已经是脏值了,就不去走queneWatcher了
+        if (this.lazy) {
+          this.dirty = true;
+        } else {
+          // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
+          queneWatcher(this);
+        }
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        this.get();
+      }
+
+      /* 
+        计算属性依赖的属性的dep记录Dep.target指向的上一层watcher(渲染watcher)
+        1. 如何通过watcher获取到关联的deps
+        2. 如果让这些deps分别记录到Dep.target
+      */
+    }, {
+      key: "depend",
+      value: function depend() {
+        // 获取有多少个属性的dep记录了此watcher 如果一个计算属性依赖了2个属性fName和lName
+        // 那么fName和lName属性的dep依赖收集器中收集了此watcher
+        for (var i = 0; i < this.deps.length; i++) {
+          var dep = this.deps[i];
+          // 让Dep.target指向的上一层watcher(渲染watcher)也被收集到属性的dep中
+          dep.depend();
+        }
+      }
+
+      /* 
+        evaluate是计算的意思，是专门用来处理计算属性的，有三个作用：
+        1. 执行计算属性watcher的get方法，这个get其实就是计算属性的getter
+        2. 获取到上一步计算后的结果，也就是get方法的返回值，挂载到此watcher的value属性上
+        3. 同时修改此计算顺序watcher的dirty属性
+      */
+    }, {
+      key: "evaluate",
+      value: function evaluate() {
+        // 获取到用户传入函数的返回值
+        this.value = this.get();
+        this.dirty = false;
+      }
+    }]);
+    return Watcher;
+  }();
+  /**
+   * 将需要更新的watcher缓存到队列中
+   * @param {*} watcher
+   */
+  var quene = []; // 缓存即将要更新的watcher队列
+  var has = {}; // 基于对象去重
+  var pending = false; // 实现防抖
+  function queneWatcher(watcher) {
+    console.log("queneWatcher执行");
+    var id = watcher.id;
+    if (!has[id]) {
+      // 将需要更新视图的watcher先暂存到队列中
+      quene.push(watcher);
+      has[id] = true;
+      console.log("当前保存watcher的队列为", quene);
+      if (!pending) {
+        // 同步任务结束之后 依次调用watcher的run方法 然后清空缓存的watcher
+
+        // --- setTimeout(flushSchedulerQuene, 0);
+        nextTick(flushSchedulerQuene);
+        pending = true;
+      }
+    }
+  }
+
+  /* 
+    刷新调度队列
+   把缓存在队列中的watcher拿出来，依次执行每一个watcher的更新视图操作
+  */
+  function flushSchedulerQuene() {
+    var flushWatcherQuene = quene.slice(0);
+
+    // 清空队列
+    quene = [];
+    // 清空缓存
+    has = {};
+    // 重置pending 防止在下面run的时候产生了新的watcher 可以保证继续放入到队列quene中
+    pending = false;
+
+    // 依次执行watcher的run方法更新视图
+    flushWatcherQuene.forEach(function (watcher) {
+      watcher.run();
+    });
+  }
+
+  function initComputed(vm) {
+    var computed = vm.$options.computed;
+    // 将计算属性关联的所有watcher保存到vm的_computedWatchers属性上便于后续从vm上取值
+    var watchers = vm._computedWatchers = {};
+    // 遍历用户传入的computed对象
+    for (var key in computed) {
+      if (Object.hasOwnProperty.call(computed, key)) {
+        /* 
+            获取对计算属性的值
+            1. 值可能为对象 fullName:{get(){return xxx},set(){}}
+            2. 值可能为函数 fullName(){return xxx};
+        */
+        var userDefine = computed[key];
+
+        /* 
+            目的：将计算属性和watcher关联起来，并且保证这次new Watcher中的fn不执行
+                  此watcher用于监控计算属性中get的变化
+                
+            getter:当计算属性本身为函数时就是本身，为一个对象时就是计算属性的get方法
+            lazy：默认当new Watcher的时候传入的第二个参数fn也就是getter会立即执行，但是我们希望
+                  计算属性的getter不立即执行，而是真正取值的时候才执行，也就是懒执行
+        */
+        var getter = typeof userDefine === 'function' ? userDefine : userDefine.get;
+        watchers[key] = new Watcher(vm, getter, {
+          lazy: true
+        });
+
+        /* 
+            目的：将用户传入的计算属性挂载到vm实例对象上，方便可以直接通过vm访问计算属性
+        */
+        defineComputed(vm, key, userDefine);
+      }
+    }
+  }
+
+  /**
+   * 定义计算属性：因为计算属性自己就有setter和getter
+   * @param {*} target 要给vm实例定义计算属性
+   * @param {*} key 计算属性的key，比如fullName
+   * @param {*} userDefine 计算属性的值，也就是用户自定义传入的计算属性的值
+   */
+  function defineComputed(target, key, userDefine) {
+    /* 
+        取出计算属性的getter和setter
+    */
+    typeof userDefine === 'function' ? userDefine : userDefine.get;
+    var setter = userDefine.set || function () {};
+    // console.log(`计算属性${key}的\ngetter是：${getter}\nsetter是：${setter}\n`);
+
+    /* 
+        定义响应式属性
+    */
+    Object.defineProperty(target, key, {
+      get: createComputedGetter(key),
+      set: setter
+    });
+  }
+
+  /* 
+      createComputedGetter:创建一个包装后的计算属性Getter，控制是否执行用户传入的getter
+
+      1. createComputedGetter方法的返回值是一个getter函数，此函数在调用时的this是target也就是vm实例
+      2. 当模板在第一次读取计算属性的值的时候就会触发其getter，此时就会执行此包装后的getter函数，如果和此计算属性关联的watcher是dirty也就是值为true，那么就执行getter返回值
+      3. 当模板第二次读取计算属性的值的时候，此时dirty已经被修改为false，就不会多次的执行计算属性真正的那个getter了(比如return this.fName + this.lName)
+  */
+  function createComputedGetter(key) {
+    return function () {
+      // 获取到initComputed时定义的此计算属性key对应的watcher
+      var watcher = this._computedWatchers[key];
+
+      // 如果是脏的 就去执行watcher的evaluate方法 只要执行一次就将dirty变为false 下次再求值就不执行了
+      if (watcher.dirty) {
+        console.log("计算属性watcher执行");
+        watcher.evaluate();
+      }
+
+      /* 
+          1. 如果watcher.evaluate()执行之后Dep.target还有值 那么说明计算属性出栈后还有渲染watcher在栈中
+          2. 此时需要找到计算属性中的依赖的属性（如fName和lName），让这些属性的dep不仅要收集计算属性watcher，还需要收集上一层的watcher(渲染watcher)
+          3.  这是修改计算属性依赖的属性而不修改计算属性引起视图渲染的核心所在
+      */
+      if (Dep.target) {
+        // 让watcher反过来收集属性
+        watcher.depend();
+      }
+      return watcher.value;
+    };
+  }
+
   function initState(vm) {
     var options = vm.$options; // 获取用户传入的选项
 
@@ -391,7 +768,9 @@
     if (options.data) {
       initData(vm);
     }
-    if (options.methods) ;
+    if (options.methods) {
+      initMethods(vm);
+    }
     if (options.computed) {
       initComputed(vm);
     }
@@ -892,218 +1271,6 @@
     return renderFn;
   }
 
-  /* 
-      nextTick并没有直接采用某一个API 
-      而是采用了优雅降级的方式来实现
-      并且这里采用了一个策略模式来实现给timerFunction的赋值
-
-      原则为尽可能快的看到视图发生刷新：
-      Promise.resolve()
-      MutationObserver
-      setImmediate
-      setTimeout
-
-  */
-  var timerFunction = null;
-  function getTimerFunction() {
-    if (Promise && typeof Promise === 'function') {
-      timerFunction = function timerFunction() {
-        Promise.resolve().then(flashCallBacks);
-      };
-    } else if (MutationObserver) {
-      var mutationOb = new MutationObserver(flashCallBacks);
-      var textNode = document.createTextNode(1);
-      mutationOb.observe(textNode, {
-        characterData: true
-      });
-      timerFunction = function timerFunction() {
-        textNode.textContent = 2;
-      };
-    } else if (setImmediate) {
-      timerFunction = function timerFunction() {
-        setImmediate(flashCallBacks);
-      };
-    } else {
-      timerFunction = function timerFunction() {
-        setTimeout(flashCallBacks, 0);
-      };
-    }
-  }
-  getTimerFunction();
-
-  /**
-   * 异步批处理
-   */
-  var callBacks = [];
-  var waiting = false;
-  function nextTick(callback) {
-    console.log('nextTick执行，先缓存callback\n', callback);
-
-    // 异步批处理：先在这里全部缓存起来
-    callBacks.push(callback);
-    if (!waiting) {
-      /* 
-          等到时间到了才依次将任务取出执行
-          cb() => 
-          flushSchedulerQuene() => 
-          flushWatcherQuene.forEach(watcher=>{watcher.run();}) =>
-          watcher.get() 视图更新
-      */
-      /*  
-           setTimeout(()=>{
-               flashCallBacks();
-           },0) 
-           waiting = true;
-       */
-      timerFunction();
-      waiting = true;
-    }
-  }
-
-  /* 
-      将任务队列中任务取出依次执行
-  */
-  function flashCallBacks() {
-    var cbs = callBacks.slice(0);
-    callBacks = [];
-    waiting = false;
-    cbs.forEach(function (cb) {
-      cb();
-    });
-  }
-
-  var id = 0;
-  var Watcher = /*#__PURE__*/function () {
-    /* 
-          1. vm：需要告诉我当前这个watcher实例是那个vm实例的
-          2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
-          3. options 值为true的时候表示要创建一个渲染watcher
-          4. deps 存放当前watcher被哪些属性的dep所收集
-      */
-    function Watcher(vm, fn, options) {
-      _classCallCheck(this, Watcher);
-      this.id = id++;
-      this.renderWatcher = options;
-      this.getter = fn;
-      this.deps = [];
-      this.depsId = new Set();
-      this.get();
-    }
-
-    /* 
-          执行get方法的流程：
-          0. 将当前watcher实例放到Dep.target属性上
-          1. this.getter();
-          2. 调用渲染逻辑updateComponent
-          3. 调用_update和_render
-          4. 调用_render的时候去vm上读取属性值
-          5. 触发getter，判断是否Dep.target有值，如果有值，执行dep依赖收集方法depend
-            name => dep.depned => [watcher]
-          age => dep.depend => [watcher]
-      */
-    _createClass(Watcher, [{
-      key: "get",
-      value: function get() {
-        // 将watcher实例赋值给Dep.target静态属性
-        Dep.target = this;
-
-        // 执行this.getter方法就会读取vm.data上的属性，触发属性的getter，进行依赖收集
-        this.getter();
-
-        // 必须清空 否则会导致不被模板依赖的属性发生getter的时候也被收集
-        Dep.target = null;
-      }
-
-      /**
-       * watcher实例记录dep依赖收集器的方法
-       *
-       * 1. 一个组件(视图)watcher可能对应多个属性，每个属性都有自己的dep
-       * 2. 那么也就是说一个watcher应该记录自己被哪些dep所收集了
-       * 3. 对于重复的属性，watcher也不用重复记录，比如一个watcher中读取了两次name值
-       *    那么会触发两次name的getter
-       *    就会触发两次name属性的dep.depend方法
-       *    就会触发两次Dep.target.addDep(this);
-       *    就等于执行了两次watcher实例的addDep方法；
-       *    如果不去重，此watcher实例内部的deps就会记录到重复的name属性的dep
-       */
-    }, {
-      key: "addDep",
-      value: function addDep(dep) {
-        var depId = dep.id;
-        // 基于set去重：如果dep的id没有存在于depIds的set中，那么才进行记录
-        if (!this.depsId.has(depId)) {
-          // 当前watcher实例对此属性依赖收集器dep 进行记录并且实现了dep的去重
-          this.deps.push(dep);
-          this.depsId.add(depId);
-
-          // 传递进来的属性依赖收集器dep实例对此watcher也进行依赖收集，间接实现了watcher去重
-          dep.addSub(this);
-        }
-      }
-
-      /* 
-        调用update就会执行get方法
-        重新走执行get方法的流程如上所示
-      */
-    }, {
-      key: "update",
-      value: function update() {
-        // --- this.get(); 每次update更新会引起重复的更新 性能浪费 需要将更新操作先缓存
-        queneWatcher(this);
-      }
-    }, {
-      key: "run",
-      value: function run() {
-        this.get();
-      }
-    }]);
-    return Watcher;
-  }();
-  /**
-   * 将需要更新的watcher缓存到队列中
-   * @param {*} watcher
-   */
-  var quene = []; // 缓存即将要更新的watcher队列
-  var has = {}; // 基于对象去重
-  var pending = false; // 实现防抖
-  function queneWatcher(watcher) {
-    console.log("queneWatcher执行");
-    var id = watcher.id;
-    if (!has[id]) {
-      // 将需要更新视图的watcher先暂存到队列中
-      quene.push(watcher);
-      has[id] = true;
-      console.log("当前保存watcher的队列为", quene);
-      if (!pending) {
-        // 同步任务结束之后 依次调用watcher的run方法 然后清空缓存的watcher
-
-        // --- setTimeout(flushSchedulerQuene, 0);
-        nextTick(flushSchedulerQuene);
-        pending = true;
-      }
-    }
-  }
-
-  /* 
-    刷新调度队列
-   把缓存在队列中的watcher拿出来，依次执行每一个watcher的更新视图操作
-  */
-  function flushSchedulerQuene() {
-    var flushWatcherQuene = quene.slice(0);
-
-    // 清空队列
-    quene = [];
-    // 清空缓存
-    has = {};
-    // 重置pending 防止在下面run的时候产生了新的watcher 可以保证继续放入到队列quene中
-    pending = false;
-
-    // 依次执行watcher的run方法更新视图
-    flushWatcherQuene.forEach(function (watcher) {
-      watcher.run();
-    });
-  }
-
   /**
    * 
    * @param {*} vm 实例
@@ -1241,7 +1408,8 @@
        * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
        */
       vm.$options = mergeOptions(this.constructor.options, options);
-      console.log(vm.$options);
+      // console.log(vm.$options);
+
       // data未初始化前调用beforeCreate生命周期函数
       callHook(vm, "beforeCreate");
 
@@ -1527,7 +1695,7 @@
     */
     Vue.mixin = function (mixinOptions) {
       this.options = mergeOptions(this.options, mixinOptions);
-      // 链式调用
+      // 链式调用返回Vue构造函数
       return this;
     };
   }
