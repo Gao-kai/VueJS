@@ -35,29 +35,46 @@ let id = 0;
 class Watcher {
   /* 
         1. vm：需要告诉我当前这个watcher实例是那个vm实例的
-        2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
+        2. exprOrFn：字符串或者函数,我们会将字符串转化为函数写法
+          值为字符串时，可能是vm.$watch("number", cb);
+          值为函数，可能是初始化渲染updateCpmponent、计算属性getter以及vm.$watch(()=>vm.number, cb);
         3. options 值为true的时候表示要创建一个渲染watcher
         4. deps 存放当前watcher被哪些属性的dep所收集
         5. depsId 存放当前watcher对应的依赖收集器的id集合
         6. lazy 标识此watcher的fn是否为懒执行,也就是在new Watcher的时候先不执行
         7. dirty 标识计算属性的watcher是否为脏 如果是脏的才会在触发计算属性自己getter的时候执行get方法
+        8. callback watch配置项中观察的属性变化时要执行的回调函数
+        9. user 标识是否为用户自己的watcher
+        10. value 执行this.get()方法的返回值 对于vm.$watch(()=>vm.number, cb)来说
+            就是执行()=>vm.number的返回值也就是vm.number的值，这个值就是watch观察的属性的老值oldValue
         
     */
-  constructor(vm, fn, options) {
+  constructor(vm, exprOrFn, options,callback) {
     this.id = id++;
     this.renderWatcher = options;
-    this.getter = fn;
+    /* 
+      将exprOrFn为字符串统一转化为函数
+    */
+    if(typeof exprOrFn === 'string'){
+      this.getter = function(){
+        return vm[exprOrFn];
+      }
+    }else{
+      this.getter = exprOrFn;
+    }
+    
 
     this.deps = [];
     this.depsId = new Set();
 
     this.lazy = options.lazy;
     this.dirty = this.lazy;
-
+    this.callback = callback;
     this.vm = vm;
+    this.user = options.user;
 
     /* 控制在new Watcher的时候传入的fn是立即执行还是懒执行 */
-    this.lazy ? null : this.get();
+    this.value = this.lazy ? null : this.get();
   }
 
   /* 
@@ -81,6 +98,7 @@ class Watcher {
        执行this.getter方法就会去vm实例上取值，触发属性的getter，进行依赖收集
        1. 如果执行渲染getter，那么getter中的this本来也就是vm实例（之前通过with绑定的）
        2. 如果执行计算属性的getter，那么getter中的this必须为vm实例才可以
+       3. 如果执行watch观察属性的fn，那么getter中的this必须为vm实例才可以
     */
     let value = this.getter.call(this.vm);
     console.log(
@@ -139,7 +157,12 @@ class Watcher {
   }
 
   run() {
-    this.get();
+    let oldValue = this.value;
+    let newValue = this.get();
+    if(this.user){
+      this.callback.call(this.vm,newValue,oldValue)
+    }
+   
   }
 
   /* 

@@ -485,27 +485,44 @@
   var Watcher = /*#__PURE__*/function () {
     /* 
           1. vm：需要告诉我当前这个watcher实例是那个vm实例的
-          2. fn：当实例上属性变化的时候要执行的渲染函数逻辑 
+          2. exprOrFn：字符串或者函数,我们会将字符串转化为函数写法
+            值为字符串时，可能是vm.$watch("number", cb);
+            值为函数，可能是初始化渲染updateCpmponent、计算属性getter以及vm.$watch(()=>vm.number, cb);
           3. options 值为true的时候表示要创建一个渲染watcher
           4. deps 存放当前watcher被哪些属性的dep所收集
           5. depsId 存放当前watcher对应的依赖收集器的id集合
           6. lazy 标识此watcher的fn是否为懒执行,也就是在new Watcher的时候先不执行
           7. dirty 标识计算属性的watcher是否为脏 如果是脏的才会在触发计算属性自己getter的时候执行get方法
+          8. callback watch配置项中观察的属性变化时要执行的回调函数
+          9. user 标识是否为用户自己的watcher
+          10. value 执行this.get()方法的返回值 对于vm.$watch(()=>vm.number, cb)来说
+              就是执行()=>vm.number的返回值也就是vm.number的值，这个值就是watch观察的属性的老值oldValue
           
       */
-    function Watcher(vm, fn, options) {
+    function Watcher(vm, exprOrFn, options, callback) {
       _classCallCheck(this, Watcher);
       this.id = id++;
       this.renderWatcher = options;
-      this.getter = fn;
+      /* 
+        将exprOrFn为字符串统一转化为函数
+      */
+      if (typeof exprOrFn === 'string') {
+        this.getter = function () {
+          return vm[exprOrFn];
+        };
+      } else {
+        this.getter = exprOrFn;
+      }
       this.deps = [];
       this.depsId = new Set();
       this.lazy = options.lazy;
       this.dirty = this.lazy;
+      this.callback = callback;
       this.vm = vm;
+      this.user = options.user;
 
       /* 控制在new Watcher的时候传入的fn是立即执行还是懒执行 */
-      this.lazy ? null : this.get();
+      this.value = this.lazy ? null : this.get();
     }
 
     /* 
@@ -530,6 +547,7 @@
            执行this.getter方法就会去vm实例上取值，触发属性的getter，进行依赖收集
            1. 如果执行渲染getter，那么getter中的this本来也就是vm实例（之前通过with绑定的）
            2. 如果执行计算属性的getter，那么getter中的this必须为vm实例才可以
+           3. 如果执行watch观察属性的fn，那么getter中的this必须为vm实例才可以
         */
         var value = this.getter.call(this.vm);
         console.log("this.getter执行一次，执行的watcher是", this, "\n执行的结果是", value);
@@ -587,7 +605,11 @@
     }, {
       key: "run",
       value: function run() {
-        this.get();
+        var oldValue = this.value;
+        var newValue = this.get();
+        if (this.user) {
+          this.callback.call(this.vm, newValue, oldValue);
+        }
       }
 
       /* 
@@ -757,6 +779,43 @@
     };
   }
 
+  function initWatch(vm) {
+    // 获取用户传入的watch配置项对象
+    var watchOptions = vm.$options.watch;
+
+    // 遍历每一个watch属性
+    for (var key in watchOptions) {
+      // 获取到watch属性key对应的值，可能为数组、字符串和函数
+      var handler = watchOptions[key];
+
+      // 如果值为数组 那么数组中有多个回调函数 遍历数组中的每一项调用vm.$watch
+      if (Array.isArray(handler)) {
+        for (var i = 0; i < handler.length; i++) {
+          createWatcher(vm, key, handler[i]);
+        }
+      } else {
+        createWatcher(vm, key, handler);
+      }
+    }
+  }
+
+  /**
+   * 这一步的目的是将通过数组字符串以及函数写法的watch配置项转化成为统一的vm.$watch写法
+   * 并且方法的第一个参数key一定为字符串
+   * 
+   * @param {*} vm 实例
+   * @param {*} key watch配置项中要观察的实例上的属性名
+   * @param {*} handler 属性名发生变化之后要执行的回调
+   */
+  function createWatcher(vm, key, handler) {
+    // 如果值为字符串 说明这个handler是调用了methdos中的方法 而methods上的函数最终也会挂载到vm上
+    if (typeof handler === "string") {
+      // 直接通过vm实例去获取函数
+      handler = vm[handler];
+    }
+    return vm.$watch(key, handler);
+  }
+
   function initState(vm) {
     var options = vm.$options; // 获取用户传入的选项
 
@@ -768,9 +827,7 @@
     if (options.data) {
       initData(vm);
     }
-    if (options.methods) {
-      initMethods(vm);
-    }
+    if (options.methods) ;
     if (options.computed) {
       initComputed(vm);
     }
@@ -1694,9 +1751,30 @@
     * @param {Object} mixinOptions
     */
     Vue.mixin = function (mixinOptions) {
+      // this就是Vue构造函数
       this.options = mergeOptions(this.options, mixinOptions);
       // 链式调用返回Vue构造函数
       return this;
+    };
+
+    /**
+     * 监控某个属性的变化，然后调用回调函数
+     * @param {*} exprOrFn 有可能是函数()=>{vm.xxx} 也有可能是字符串vm实例上的属性名'xxx'
+     * @param {*} callback 回调函数
+     */
+    Vue.prototype.$watch = function (exprOrFn, callback) {
+      console.log("\u521B\u5EFAwatch\u5C5E\u6027\uFF0C\u8981\u76D1\u63A7\u7684\u5C5E\u6027\u540D\u4E3A".concat(exprOrFn, ",\u56DE\u8C03\u51FD\u6570\u4E3A").concat(callback));
+
+      /* 
+          调用$watch的核心就是调用new Watcher
+          1. this就是vm实例
+          2. exprOrFn就是需要观察的vm实例上的属性名字符串或者函数，我们会在Watcher中将字符串变为函数
+          3. 配置项{user:true}告诉Watcher这是一个用户自定义的watcher
+          4. callback 观察的属性发生变化的时候执行的回调函数
+      */
+      new Watcher(this, exprOrFn, {
+        user: true
+      }, callback);
     };
   }
 

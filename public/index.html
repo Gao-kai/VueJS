@@ -11,20 +11,18 @@
   </head>
   <body>
     <div id="app">
-
-        <h4 style="color: pink">计算属性fullName的值是：{{fullName}}</h2>  
-        <h4 style="color: pink">计算属性fullName的值是：{{fullName}}</h2>  
-            
+      {{number}}
     </div>
-
+     
     <script>
       const vm = new Vue({
         el: "#app",
         data() {
           return {
             fName: "GeoGusser --- ",
-            lName:"图寻社区",
+            lName: "图寻社区",
             age: "18",
+            number: 100,
             address: {
               country: "China",
               provice: "甘肃",
@@ -32,43 +30,51 @@
             hobby: ["football", "basketball"],
           };
         },
-        computed:{
-            // 函数写法简写
-            fullName(){
-                console.log("计算属性fullName取值1次！！")
-                return this.fName + this.lName;
+       /*  methods: {
+          onAgeChange(newValue, oldValue) {
+            console.log("属性Age发生变化", newValue, oldValue);
+          },
+        },
+        watch: {
+          // 1. 函数写法
+          fName(newValue, oldValue) {
+            console.log("属性fName发生变化", newValue, oldValue);
+          },
+          // 2. 数组写法
+          lName: [
+            (newValue, oldValue) => {
+              console.log("属性lName发生变化1", newValue, oldValue);
             },
-            // 对象写法
-            /* userInfo:{
-                get(){
-                    return this.lName + this.age;
-                },
-                set(newValue){
-                    console.log('newValue',newValue);
-                }
-
-            } */
-        }
+            (newValue, oldValue) => {
+              console.log("属性lName发生变化2", newValue, oldValue);
+            },
+          ],
+          // 3.直接调用methods写法
+          age: "onAgeChange",
+        }, */
       });
       console.log("手动创建的Vue实例---vm：", vm);
 
-      /* 
-        验证计算属性userInfo是否和data中的属性一样会被挂载到vm实例上，供外部访问
-      */
+      // 4.直接调用$watch方法
+      vm.$watch(
+        () => vm.number,
+        (newValue, oldValue) => {
+          console.log("属性number发生变化1", newValue, oldValue);
+        }
+      );
+      // 或者
+      vm.$watch("number", (newValue, oldValue) => {
+        console.log("属性number发生变化2", newValue, oldValue);
+      });
 
-      /* setTimeout(()=>{
-        vm.userInfo = vm.lName + 20;
-      },0) */
-
-      /* 
-        验证计算属性fullName所依赖的属性fName和lName发生变化之后，
-        1. 计算属性是否会变脏
-        2. 是否会引起fullName所依赖的模板(watcher)重新渲染
-      */
-
-       setTimeout(()=>{
-        vm.fName = "hahaha"
-      },1000)
+      setTimeout(() => {
+        // vm.fName = "你好呀，李银河！";
+        // vm.lName = "你好呀，李银河！";
+        // vm.age = "20";
+        vm.number = "99";
+        vm.number = "199";
+        vm.number = "299";
+      }, 1000);
     </script>
   </body>
 </html>
