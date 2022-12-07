@@ -10,70 +10,51 @@
     <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
   </head>
   <body>
-    <div id="app">
-      {{number}}
-    </div>
-     
+    <div id="app">{{address}} {{list}}</div>
+
     <script>
       const vm = new Vue({
         el: "#app",
         data() {
           return {
-            fName: "GeoGusser --- ",
-            lName: "图寻社区",
-            age: "18",
-            number: 100,
             address: {
-              country: "China",
-              provice: "甘肃",
+              name: "China",
+              age: "18",
             },
-            hobby: ["football", "basketball"],
+            list: ["football", "basketball", [1, 2, 3]],
           };
         },
-       /*  methods: {
-          onAgeChange(newValue, oldValue) {
-            console.log("属性Age发生变化", newValue, oldValue);
-          },
-        },
-        watch: {
-          // 1. 函数写法
-          fName(newValue, oldValue) {
-            console.log("属性fName发生变化", newValue, oldValue);
-          },
-          // 2. 数组写法
-          lName: [
-            (newValue, oldValue) => {
-              console.log("属性lName发生变化1", newValue, oldValue);
-            },
-            (newValue, oldValue) => {
-              console.log("属性lName发生变化2", newValue, oldValue);
-            },
-          ],
-          // 3.直接调用methods写法
-          age: "onAgeChange",
-        }, */
       });
       console.log("手动创建的Vue实例---vm：", vm);
 
-      // 4.直接调用$watch方法
-      vm.$watch(
-        () => vm.number,
-        (newValue, oldValue) => {
-          console.log("属性number发生变化1", newValue, oldValue);
-        }
-      );
-      // 或者
-      vm.$watch("number", (newValue, oldValue) => {
-        console.log("属性number发生变化2", newValue, oldValue);
-      });
+      /* 
+        1. 不会触发视图更新的操作
+        直接操作数组索引修改数组的值 不会触发视图更新
+        直接修改数组长度
+        原因在于只重写了数组方法 没有对数组操作索引的动作进行监控
+        vm.list[0] = "tennis";
+        vm.list.length = 10;
+      */
 
+      //   1. 直接修改data对象中原有的属性值 会触发更新
+      /* setTimeout(()=>{
+        vm.address.name = 100; // 会更新
+      },1000) */
+
+      //   2. 修改data对象中原本就没有的属性值，不会更新 但是可以手动强制更新
+      /* setTimeout(()=>{
+        vm.address.xxx = 200; // 不更新
+        vm.address.__ob__.dep.notify(); // vm.$set的原理
+      },1000) */
+
+      //   3. 操作数组的方法 会触发更新
+      /*  setTimeout(()=>{
+        vm.list.push("game"); // 会更新
+      },1000) */
+
+      //   4.操作数组中嵌套的数组 也会触发更新
       setTimeout(() => {
-        // vm.fName = "你好呀，李银河！";
-        // vm.lName = "你好呀，李银河！";
-        // vm.age = "20";
-        vm.number = "99";
-        vm.number = "199";
-        vm.number = "299";
+        vm.list[2].push(4); // 会更新
       }, 1000);
     </script>
   </body>

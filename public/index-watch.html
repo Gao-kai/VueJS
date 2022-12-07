@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mini Vue手写实现</title>
+    <!-- 手写实现 -->
+    <script src="/dist/mini-vue/vue.js"></script>
+
+    <!-- Vue2.0 源码 -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
+  </head>
+  <body>
+    <div id="app">
+      {{number}}
+    </div>
+     
+    <script>
+      const vm = new Vue({
+        el: "#app",
+        data() {
+          return {
+            fName: "GeoGusser --- ",
+            lName: "图寻社区",
+            age: "18",
+            number: 100,
+            address: {
+              country: "China",
+              provice: "甘肃",
+            },
+            hobby: ["football", "basketball"],
+          };
+        },
+       /*  methods: {
+          onAgeChange(newValue, oldValue) {
+            console.log("属性Age发生变化", newValue, oldValue);
+          },
+        },
+        watch: {
+          // 1. 函数写法
+          fName(newValue, oldValue) {
+            console.log("属性fName发生变化", newValue, oldValue);
+          },
+          // 2. 数组写法
+          lName: [
+            (newValue, oldValue) => {
+              console.log("属性lName发生变化1", newValue, oldValue);
+            },
+            (newValue, oldValue) => {
+              console.log("属性lName发生变化2", newValue, oldValue);
+            },
+          ],
+          // 3.直接调用methods写法
+          age: "onAgeChange",
+        }, */
+      });
+      console.log("手动创建的Vue实例---vm：", vm);
+
+      // 4.直接调用$watch方法
+      vm.$watch(
+        () => vm.number,
+        (newValue, oldValue) => {
+          console.log("属性number发生变化1", newValue, oldValue);
+        }
+      );
+      // 或者
+      vm.$watch("number", (newValue, oldValue) => {
+        console.log("属性number发生变化2", newValue, oldValue);
+      });
+
+      setTimeout(() => {
+        // vm.fName = "你好呀，李银河！";
+        // vm.lName = "你好呀，李银河！";
+        // vm.age = "20";
+        vm.number = "99";
+        vm.number = "199";
+        vm.number = "299";
+      }, 1000);
+    </script>
+  </body>
+</html>
