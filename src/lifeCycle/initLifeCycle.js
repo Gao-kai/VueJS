@@ -1,4 +1,5 @@
-import { createElementVNode, createTextVNode } from "../vNode/createNode.js";
+import { createElementVNode, createTextVNode } from "../vdom/createNode.js";
+import { patch } from "../vdom/patch.js";
 
 /**
  * Vue核心流程
@@ -74,79 +75,4 @@ export function initLifeCycle(Vue) {
   };
 }
 
-/**
- * patch方法是Vue中的更新视图的核心方法，Vue2.0、3.0都有
- *
- * patch方法可以用来将虚拟DOM转化为真实DOM
- * pathc方法也可以用来更新视图，DIff算法就走patch
- *
- *
- * @param {*} oldVNode 可能是初渲染的真实DOM，也可能是更新时传入的旧的虚拟DOM
- * @param {*} vNode 执行render函数生成的虚拟DOM对象
- */
-function patch(oldVNode, vNode) {
-  // 如果oldVNode是一个真实的DOM元素 那么代表传递进来的是要挂载的DOM节点是初始化渲染
-  let isRealDomElement = oldVNode.nodeType;
 
-  if (isRealDomElement) {
-    // 初始化渲染流程
-
-    const oldElement = oldVNode;
-    const parentNode = oldElement.parentNode;
-    const newElement = createElement(vNode);
-
-    // 基于最新的vNode虚拟DOM生成的真实DOM节点先插入到旧节点的后面兄弟节点
-    parentNode.insertBefore(newElement, oldElement.nextSibling);
-    // 然后再将旧节点移除
-    parentNode.removeChild(oldElement);
-    // 最后返回新的真实DOM节点，挂载到vm.$el上，下次更新的时候直接去vm.$el上获取
-    return newElement;
-  } else {
-    // 基于新旧DOM进行DIFF算法对比
-  }
-}
-
-/**
- * 将虚拟DOM vNode转化为 真实DOM节点
- * JS对象 ==> HTML Element
- */
-function createElement(vNode) {
-  let { tag, props, children, text } = vNode;
-
-  // 创建真实元素节点
-  if (typeof tag === "string") {
-    // 虚拟DOM和真实DOM连接起来,后续如果修改属性了，可以直接找到虚拟节点对应的真实节点修改
-    vNode.el = document.createElement(tag);
-
-    // 给节点属性赋值
-    patchProps(props, vNode.el);
-
-    // 给节点添加子节点
-    children.forEach((childvNode) => {
-        vNode.el.appendChild(createElement(childvNode));
-    });
-  } else {
-    // 创建真实文本节点
-    vNode.el = document.createTextNode(text);
-  }
-
-  return vNode.el;
-}
-
-/**
- * @param {Object} props 属性组成的对象
- * @param {Object} element 当前属性要挂载的元素节点
- * props:{ id:'app',style:{ color:red}}
- */
-function patchProps(props, element) {
-  for (const key in props) {
-    if (key === "style") {
-      let styleObj = props.style;
-      for (const key in styleObj) {
-        element.style[key] = styleObj[key];
-      }
-    } else {
-      element.setAttribute(key, props[key]);
-    }
-  }
-}

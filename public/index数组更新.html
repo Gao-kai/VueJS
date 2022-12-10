@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mini Vue手写实现</title>
+    <!-- 手写实现 -->
+    <script src="/dist/mini-vue/vue.js"></script>
+
+    <!-- Vue2.0 源码 -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
+  </head>
+  <body>
+    <div id="app">{{address}} {{list}}</div>
+
+    <script>
+      const vm = new Vue({
+        el: "#app",
+        data() {
+          return {
+            address: {
+              name: "China",
+              age: "18",
+            },
+            list: ["football", "basketball", [1, 2, 3]],
+          };
+        },
+      });
+      console.log("手动创建的Vue实例---vm：", vm);
+
+      /* 
+        1. 不会触发视图更新的操作
+        直接操作数组索引修改数组的值 不会触发视图更新
+        直接修改数组长度
+        原因在于只重写了数组方法 没有对数组操作索引的动作进行监控
+        vm.list[0] = "tennis";
+        vm.list.length = 10;
+      */
+
+      //   1. 直接修改data对象中原有的属性值 会触发更新
+      /* setTimeout(()=>{
+        vm.address.name = 100; // 会更新
+      },1000) */
+
+      //   2. 修改data对象中原本就没有的属性值，不会更新 但是可以手动强制更新
+    //   你可能会问既然对数组和对象本身都进行了依赖收集 为什么push一个值修改了数组本身可以更新呢 因为人家数组监听了方法 在
+    // 方法执行完成之后会调用notify这个代码进行更新 你对象只监听了getter和setter，就是直接对对象进行赋值，如果是一个外部的
+    // 为加入到响应系统的属性比如x，x属性没有绑定自己的getter和setter，因为这是init阶段的工作，后续加入到data中的数据不具有
+    // 响应式的效果，所以就算对象自身有subs依赖，但是你对x进行赋值不会触发x的setter，也就不会更新
+
+    // 解决方法$set 就是 vm.address.__ob__.dep.notify(); 先找到那个对象，先赋值，然后手动执行notify即可
+      /* setTimeout(()=>{
+        vm.address.xxx = 200; // 不更新
+        vm.address.__ob__.dep.notify(); // vm.$set的原理
+      },1000) */
+
+      //   3. 操作数组的方法 会触发更新
+      /*  setTimeout(()=>{
+        vm.list.push("game"); // 会更新
+      },1000) */
+
+      //   4.操作数组中嵌套的数组 也会触发更新
+      setTimeout(() => {
+        vm.list[2].push(4); // 会更新
+      }, 1000);
+    </script>
+  </body>
+</html>
