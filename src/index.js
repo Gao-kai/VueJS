@@ -21,13 +21,23 @@ initGlobalApi(Vue);
 import { compileToFunction } from "./template-compiler/index.js";
 import { createElement, patch } from "./vdom/patch.js";
 
-let render1 = compileToFunction(`<h1 key='a' style="color:red">{{name}}</h1>`);
+let render1 = compileToFunction(`<ul id="1" style="color:red;font-size:16px">
+	<li key="a">a</li>
+	<li key="b">b</li>
+	<li key="c">c</li>
+</ul>`);
 let vm1 = new Vue({ data: { name: "你好啊，李银河！" } });
 let oldVNode = render1.call(vm1);
 let oldEl = createElement(oldVNode);
 document.body.appendChild(oldEl);
 
-let render2 = compileToFunction(`<h1 key='b'从 style="color:yellow;background:pink">{{name}}</h1>`);
+let render2 =
+  compileToFunction(`<ul id="2" style="color:yellow;background:pink">
+	<li key="a">a</li>
+	<li key="b">b</li>
+	<li key="c">c</li>
+	<li key="d">d</li>
+</ul>`);
 let vm2 = new Vue({ data: { name: "你好啊，李银河！" } });
 let newVNode = render2.call(vm2);
 // let newEl = createElement(newVNode);
@@ -36,14 +46,13 @@ let newVNode = render2.call(vm2);
 // let parentEl = oldEl.parentNode;
 
 setTimeout(() => {
- /*  
+  /*  
 	直接用新节点替换老节点
  	parentEl.insertBefore(newEl, oldEl);
   	parentEl.removeChild(oldEl); 
  */
 
-	  patch(oldVNode,newVNode);
-
+  patch(oldVNode, newVNode);
 }, 1000);
 
 export default Vue;
