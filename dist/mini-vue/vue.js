@@ -1795,11 +1795,9 @@
    *
    *
    */
-  function patchProps(element) {
-    var oldProps = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
-    var newProps = arguments.length > 2 ? arguments[2] : undefined;
-    var oldStyle = oldProps.style || {};
-    var newStyle = newProps.style || {};
+  function patchProps(element, oldProps, newProps) {
+    var oldStyle = (oldProps === null || oldProps === void 0 ? void 0 : oldProps.style) || {};
+    var newStyle = (newProps === null || newProps === void 0 ? void 0 : newProps.style) || {};
 
     // 旧的style中有的属性 新的sytle没有 则从DOM节点上的style表中将属性删除
     for (var key in oldStyle) {
@@ -1869,23 +1867,138 @@
 
   /**
    * 虚拟DOM DIFF算法核心方法
-   * 
+   *
    * 特殊情况：四指针法
    * oldChildren：A B C D
    * newChildren: A B C
-   * 
+   *
    * oldChildren和newChildren一开始的头尾都各有一个left和right指针，一开始两个left指针指向的节点进行对比，如果节点对比相同那么left指针前进+1，直到有任意一个left指针的值大于right指针了，那么终止循环对比。此时要不是从尾部将新的节点插入，或者从尾部将多余的节点删除。
-   * 
+   *
    */
   function updateChildren(el, oldChildren, newChildren) {
+    // 四个指针
+    var oldStartIndex = 0;
     var oldEndIndex = oldChildren.length - 1;
+    var newStartIndex = 0;
     var newEndIndex = newChildren.length - 1;
 
     // 四个指针初始指向的节点
-    oldChildren[0];
-    oldChildren[oldEndIndex];
-    newChildren[0];
-    newChildren[newEndIndex];
+    var oldStartVNode = oldChildren[0];
+    var oldEndVNode = oldChildren[oldEndIndex];
+    var newStartVNode = newChildren[0];
+    var newEndVNode = newChildren[newEndIndex];
+
+    /* 
+      对比的条件：如果有任意一方的头指针大于尾指针 那么对比结束停止循环
+    */
+    while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
+      /* 
+        1. 如果两个初始头指针指向的节点相同，则从头开始比
+          abc => abcde  abcde=>abc
+      */
+      if (isSameVNode(oldStartVNode, newStartVNode)) {
+        // 递归比较子节点
+        patchVNode(oldStartVNode, newStartVNode);
+        // 双指针向前进并且更新指向的节点
+        oldStartIndex++;
+        newStartIndex++;
+        oldStartVNode = oldChildren[oldStartIndex];
+        newStartVNode = newChildren[newStartIndex];
+        // 加continue的原因就为了控制头尾指针都一直 进入到两个if语句中造成指针的混乱 比如abc和abc
+        continue;
+      }
+      /* 
+        2. 如果两个初始尾指针指向的节点相同，则从尾开始比
+          abc => dabc  dabc => abc 
+      */
+      if (isSameVNode(oldEndVNode, newEndVNode)) {
+        // 递归比较子节点
+        patchVNode(oldEndVNode, newEndVNode);
+        // 双指针向后退更新指向的节点
+        oldEndIndex--;
+        newEndIndex--;
+        oldEndVNode = oldChildren[oldEndIndex];
+        newEndVNode = newChildren[newEndIndex];
+        continue;
+      }
+
+      /* 
+        3. 如果旧的尾巴节点和新的头节点相同，那么进行交叉对比
+        abcd => dabc ：d和d对比相同，此时将旧的d移动到旧的a前面，复用了abc三个节点的相对位置
+      */
+      if (isSameVNode(oldEndVNode, newStartVNode)) {
+        // 递归比较子节点
+        patchVNode(oldEndVNode, newStartVNode);
+        // 先将旧的oldEndVNode移动到oldStartVNode前面去
+        el.insertBefore(oldEndVNode.el, oldStartVNode.el);
+        //  旧的尾指针--，新的头指针++
+        oldEndIndex--;
+        newStartIndex++;
+        oldEndVNode = oldChildren[oldEndIndex];
+        newStartVNode = newChildren[newStartIndex];
+        continue;
+      }
+
+      /* 
+        4. 如果旧的头节点和新的尾节点相同，那么进行交叉对比
+        abcd => bcda ：a和a对比相同，此时将旧的a移动到旧的d后面，复用了bcd三个节点的相对位置
+      */
+      if (isSameVNode(oldStartVNode, newEndVNode)) {
+        // 递归比较子节点
+        patchVNode(oldStartVNode, newEndVNode);
+        // 先将旧的oldStartVNode移动到oldEndVNode前面去
+        el.insertBefore(oldStartVNode.el, null);
+        //  旧的头指针++，新的尾指针--
+        oldStartIndex++;
+        newEndIndex--;
+        oldStartVNode = oldChildren[oldStartIndex];
+        newEndVNode = newChildren[newEndIndex];
+        continue;
+      }
+    }
+
+    /* 
+      特殊情况1：新的子节点多余旧的子节点，此时需要尽可能复用重复的，只将多出来的差异部分从头部或者尾部插入
+      这种情况下一定当旧的头指针大于尾指针时退出循环，此时新的头指针一定小于尾指针，举例：
+      old：a b c   =>   new：a b c d e 新的头指针指向d，尾指针指向e，将这两个元素取出来从尾部插入
+      old：a b c   =>   new：d e a b c  新的头指针指向d，尾指针指向e，将这两个元素取出来以a为参数物依次插入到a的前面
+     
+      那么如何用代码判断是从头部插入还是尾部插入呢？
+      判断newEndIndex的下一个节点指向的是null还是节点；如果是null代表是尾部插入的情况；如果是节点代表是头部插入的情况。
+        如果是头部插入以那个节点为参照物呢？
+      如果是头部插入，那么以newEndIndex的下一个节点也就是上面的a节点为参照物anchor，然后将多余的节点依次插入到a的前面
+        API:parentNode.insertBefore(newNode, referenceNode);
+      当referenceNode为节点时，代表将新节点插入到referenceNode节点的前面，它们同属parentNode的子节点
+      当referenceNode为null时，代表将新节点直接插入到父节点的尾部
+        所以我们只需要以anchor作为第二个参数，当anchor为null那就是尾部插入；否则就是头部依次插入。
+        其实以上情况就是模拟了我们最常见的操作数组的尾部push和头部unshift的特殊情况。
+      */
+    if (newStartIndex <= newEndIndex) {
+      for (var i = newStartIndex; i <= newEndIndex; i++) {
+        var childVNode = newChildren[i];
+        var childEl = createElement(childVNode);
+
+        // 找到参照物节点
+        var anchor = newChildren[newEndIndex + 1] ? newChildren[newEndIndex + 1].el : null;
+        el.insertBefore(childEl, anchor);
+      }
+    }
+
+    /* 
+      特殊情况2：新子节点比旧子节点少，需要尽可能复用重复的，只将差异部分从尾部移除或者头部移除
+      这种情况下一定是新的指针先遍历完，那么一定是新的头指针大于尾指针时退出循环，此时旧的头指针一定小于尾指针，举例：
+      old：a b c d e  =>  new：a b c 旧的头指针此时指向d，尾指针指向e，将这两个节点从原来的节点上移除即可
+      old：d e a b c  =>  new：a b c 旧的头指针此时指向d，尾指针指向e，将这两个节点从原来的节点上移除即可
+        和新增不同，不管是尾部移除还是头部移除，直接移除即可，不用区分头部还是尾部的情况。
+      其实这就模拟了我们最常见的操作数组的头部移除shift和尾部移除pop的特殊情况。
+    */
+    if (oldStartIndex <= oldEndIndex) {
+      for (var _i = oldStartIndex; _i <= oldEndIndex; _i++) {
+        var _childVNode = oldChildren[_i];
+        var _childEl = _childVNode.el;
+        el.removeChild(_childEl);
+      }
+    }
   }
 
   /**
@@ -2018,7 +2131,7 @@
 
   // 全局API Vue.mixin nexttick和$watch
   initGlobalApi(Vue);
-  var render1 = compileToFunction("<ul id=\"1\" style=\"color:red;font-size:16px\">\n\t<li key=\"a\">a</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n</ul>");
+  var render1 = compileToFunction("<ul id=\"1\" style=\"color:red;font-size:16px\">\n\t<li key=\"a\">a</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"d\">d</li>\n</ul>");
   var vm1 = new Vue({
     data: {
       name: "你好啊，李银河！"
@@ -2027,7 +2140,7 @@
   var oldVNode = render1.call(vm1);
   var oldEl = createElement(oldVNode);
   document.body.appendChild(oldEl);
-  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"a\">a</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"d\">d</li>\n</ul>");
+  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"d\">d</li>\n\t<li key=\"a\">a</li>\n</ul>");
   var vm2 = new Vue({
     data: {
       name: "你好啊，李银河！"

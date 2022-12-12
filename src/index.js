@@ -25,6 +25,7 @@ let render1 = compileToFunction(`<ul id="1" style="color:red;font-size:16px">
 	<li key="a">a</li>
 	<li key="b">b</li>
 	<li key="c">c</li>
+	<li key="d">d</li>
 </ul>`);
 let vm1 = new Vue({ data: { name: "你好啊，李银河！" } });
 let oldVNode = render1.call(vm1);
@@ -33,10 +34,10 @@ document.body.appendChild(oldEl);
 
 let render2 =
   compileToFunction(`<ul id="2" style="color:yellow;background:pink">
-	<li key="a">a</li>
 	<li key="b">b</li>
 	<li key="c">c</li>
 	<li key="d">d</li>
+	<li key="a">a</li>
 </ul>`);
 let vm2 = new Vue({ data: { name: "你好啊，李银河！" } });
 let newVNode = render2.call(vm2);
