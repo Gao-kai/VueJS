@@ -61,4 +61,60 @@
 尾头
 交叉比对
 
-## 循环的时候为什么要加key
+```js
+/* 测试DOM DIff的代码 */
+import { compileToFunction } from "./template-compiler/index.js";
+import { createElement, patch } from "./vdom/patch.js";
+
+let render1 = compileToFunction(`<ul id="1" style="color:red;font-size:16px">
+	<li key="a">a</li>
+	<li key="b">b</li>
+	<li key="c">c</li>
+	<li key="d">d</li>
+</ul>`);
+let vm1 = new Vue({ data: { name: "你好啊，李银河！" } });
+let oldVNode = render1.call(vm1);
+let oldEl = createElement(oldVNode);
+document.body.appendChild(oldEl);
+
+let render2 =
+  compileToFunction(`<ul id="2" style="color:yellow;background:pink">
+	<li key="d">d</li>
+	<li key="c">c</li>
+	<li key="b">b</li>
+	<li key="a">a</li>
+</ul>`);
+let vm2 = new Vue({ data: { name: "你好啊，李银河！" } });
+let newVNode = render2.call(vm2);
+// let newEl = createElement(newVNode);
+
+// 新DOM替换旧DOM
+// let parentEl = oldEl.parentNode;
+
+setTimeout(() => {
+  /*  
+	直接用新节点替换老节点
+ 	parentEl.insertBefore(newEl, oldEl);
+  	parentEl.removeChild(oldEl); 
+ */
+
+  patch(oldVNode, newVNode);
+}, 1000);
+```
+
+## 问：循环的时候为什么要加key
+方便在新旧虚拟DOM对比的时候被判断为同一个虚拟节点，进行复用。
+
+1. 为什么这个例子使用index作为key没用呢？
+
+2. 为什么代码里面是unshift头部追加，但是dom更新却是从尾部追加的？
+
+3. 为什么用id就可以了呢？也可以等于头部追加？复用了相同节点
+
+重点是判断是否为同一个节点的判断 
+
+给动态列表添加key的适合要尽量避免使用索引index，而应该使用唯一值，如果用索引的话更新前后的元素的key都是从0开始递增的
+这就会导致前后节点的tag和key都相同被认为是同一个节点，而进行属性和文本以及子节点的patch
+就不能对原来的旧的节点进行复用了
+
+没有传递key就是undefiend，就代表要按照Vue的默认对比原则尽可能的复用

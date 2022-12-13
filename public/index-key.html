@@ -6,7 +6,10 @@
   </head>
   <body>
     <div id="app">
-        {{1}}
+      <div>
+        <li v-for="(item,index) in list" :key="index">{{item.name}} <input type="checkbox" /></li>
+      </div>
+      <button @click="addItem">添加</button>
     </div>
 
     <!-- 手写实现 -->

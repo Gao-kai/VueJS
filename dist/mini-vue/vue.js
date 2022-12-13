@@ -1888,16 +1888,36 @@
     var newStartVNode = newChildren[0];
     var newEndVNode = newChildren[newEndIndex];
 
+    // 生成旧节点数组中每一个节点的key和index的映射表
+    function makeKey2Index(children) {
+      var map = {};
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        map[child.key] = i;
+      }
+      return map;
+    }
+    var oldKeyMap = makeKey2Index(oldChildren);
+    console.log('oldKeyMap', oldKeyMap);
+
     /* 
       对比的条件：如果有任意一方的头指针大于尾指针 那么对比结束停止循环
     */
     while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
+      if (oldStartVNode == undefined) {
+        oldStartIndex++;
+        oldStartVNode = oldChildren[oldStartIndex];
+      } else if (oldEndVNode == undefined) {
+        oldEndIndex--;
+        oldEndVNode = oldChildren[oldEndIndex];
+      }
+
       /* 
         1. 如果两个初始头指针指向的节点相同，则从头开始比
           abc => abcde  abcde=>abc
       */
       if (isSameVNode(oldStartVNode, newStartVNode)) {
-        // 递归比较子节点
+        // 递归比较子节点 此过程会更新文本和属性
         patchVNode(oldStartVNode, newStartVNode);
         // 双指针向前进并且更新指向的节点
         oldStartIndex++;
@@ -1957,6 +1977,36 @@
         newEndVNode = newChildren[newEndIndex];
         continue;
       }
+
+      /* 
+        6. 乱序对比
+        
+        首先基于旧的节点列表做一个映射表
+        然后从新的节点列表的头指针开始依次查找
+        如果在映射表中找到了，就将此时旧列表中的元素移动到当前找到的节点的前面
+        如果找不到则插入到旧指针的节点的前面
+        最后删除旧节点列表中多余的元素
+        abcd
+        bmapcq
+      */
+
+      var moveIndex = oldKeyMap[newStartVNode.key];
+      if (moveIndex) {
+        // 找出对应的老的虚拟节点
+        var moveVNode = oldChildren[moveIndex];
+        // 将此节点移动到当前oldStartVNode的前面
+        el.insertBefore(moveVNode.el, oldStartVNode.el);
+        // 将移动过的地方标识为undefiend 代表原来的节点已经移动走了下一次比对的时候需要跳过此位置
+        oldChildren[moveIndex] = undefined;
+        // 对比找到的这个旧的节点和新的节点 将他们的文本属性等进行更新
+        patchVNode(moveVNode, newStartVNode);
+      } else {
+        // 如果找不到就直接将新节点插入到当前oldStartVNode的前面
+        el.insertBefore(createElement(newStartVNode), oldStartVNode.el);
+      }
+      // 新的指针不断前进
+      newStartIndex++;
+      newStartVNode = newChildren[newStartIndex];
     }
 
     /* 
@@ -1993,12 +2043,15 @@
       old：d e a b c  =>  new：a b c 旧的头指针此时指向d，尾指针指向e，将这两个节点从原来的节点上移除即可
         和新增不同，不管是尾部移除还是头部移除，直接移除即可，不用区分头部还是尾部的情况。
       其实这就模拟了我们最常见的操作数组的头部移除shift和尾部移除pop的特殊情况。
+        还有一种情况就是删除乱序对比之后剩余的节点
     */
     if (oldStartIndex <= oldEndIndex) {
       for (var _i = oldStartIndex; _i <= oldEndIndex; _i++) {
         var _childVNode = oldChildren[_i];
-        var _childEl = _childVNode.el;
-        el.removeChild(_childEl);
+        if (_childVNode) {
+          var _childEl = _childVNode.el;
+          el.removeChild(_childEl);
+        }
       }
     }
   }
@@ -2142,7 +2195,7 @@
   var oldVNode = render1.call(vm1);
   var oldEl = createElement(oldVNode);
   document.body.appendChild(oldEl);
-  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"d\">d</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"a\">a</li>\n</ul>");
+  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"b\">b</li>\n\t<li key=\"m\">m</li>\n\t<li key=\"a\">a</li>\n\t<li key=\"p\">p</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"q\">q</li>\n</ul>");
   var vm2 = new Vue({
     data: {
       name: "你好啊，李银河！"
