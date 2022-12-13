@@ -34,9 +34,9 @@ document.body.appendChild(oldEl);
 
 let render2 =
   compileToFunction(`<ul id="2" style="color:yellow;background:pink">
-	<li key="b">b</li>
-	<li key="c">c</li>
 	<li key="d">d</li>
+	<li key="c">c</li>
+	<li key="b">b</li>
 	<li key="a">a</li>
 </ul>`);
 let vm2 = new Vue({ data: { name: "你好啊，李银河！" } });

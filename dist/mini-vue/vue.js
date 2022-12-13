@@ -1942,12 +1942,14 @@
       /* 
         4. 如果旧的头节点和新的尾节点相同，那么进行交叉对比
         abcd => bcda ：a和a对比相同，此时将旧的a移动到旧的d后面，复用了bcd三个节点的相对位置
+          5. 此种更新也适用于排序元素与倒序元素更新的情况，此时也是交叉对比，比如：
+        abcd => dcba 头结点和尾结点相同，那么依次将旧的a、b、c移动到d的下一个子节点前面，复用了节点d，最终效果是dcba
       */
       if (isSameVNode(oldStartVNode, newEndVNode)) {
         // 递归比较子节点
         patchVNode(oldStartVNode, newEndVNode);
-        // 先将旧的oldStartVNode移动到oldEndVNode前面去
-        el.insertBefore(oldStartVNode.el, null);
+        // 先将旧的oldStartVNode移动到oldEndVNode的下一个节点的前面
+        el.insertBefore(oldStartVNode.el, oldEndVNode.el.nextSibling);
         //  旧的头指针++，新的尾指针--
         oldStartIndex++;
         newEndIndex--;
@@ -2140,7 +2142,7 @@
   var oldVNode = render1.call(vm1);
   var oldEl = createElement(oldVNode);
   document.body.appendChild(oldEl);
-  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"d\">d</li>\n\t<li key=\"a\">a</li>\n</ul>");
+  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"d\">d</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"a\">a</li>\n</ul>");
   var vm2 = new Vue({
     data: {
       name: "你好啊，李银河！"
