@@ -408,6 +408,7 @@ function updateChildren(el, oldChildren, newChildren) {
   if (oldStartIndex <= oldEndIndex) {
     for (let i = oldStartIndex; i <= oldEndIndex; i++) {
       const childVNode = oldChildren[i];
+      // 如果有值才进行移除 是为了防止乱序对比后空节点为undefiend导致无法取到el属性的bug a x x d
       if(childVNode){
         const childEl = childVNode.el;
         el.removeChild(childEl);
