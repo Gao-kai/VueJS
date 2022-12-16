@@ -6,8 +6,11 @@
   </head>
   <body>
     <div id="app">
-        {{1}}
+      <span>{{name}}</span>
+      <span>{{age}}</span>
     </div>
+
+    <div id="root"></div>
 
     <!-- 手写实现 -->
     <script src="/dist/mini-vue/vue.js"></script>
@@ -16,25 +19,42 @@
     <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
 
     <script>
-      const vm = new Vue({
-        el: "#app",
-        data() {
-          return {
-            list: [
-              { name: "香蕉", id: 1 },
-              { name: "橘子", id: 2 },
-              { name: "西瓜", id: 3 },
-              { name: "榴莲", id: 4 },
-            ],
-          };
-        },
-        methods: {
-          addItem() {
-            this.list.unshift({name:"新增的水果",id:10});
+      // 注册一个全局组件 可以在任意组件的模板中直接使用
+      Vue.component("my-button", {
+        template: "<button>全局组件的按钮</button>",
+      });
+
+      /* 
+        基于Vue.extend API创建子类然后创建子类实例
+      */
+      let Sub = Vue.extend({
+        template: `<div>
+            <button>子组件的按钮</button>
+            <my-button></my-button>
+          </div>`,
+        components: {
+          "my-button": {
+            template: "<button>子组件的按钮</button>",
           },
         },
       });
-      console.log("手动创建的Vue实例---vm：", vm);
+      new Sub().$mount("#root");
+
+      // 默认认为new Vue生成的实例是根实例
+      // const vm = new Vue({
+      //   el: "#app",
+      //   data() {
+      //     return {
+      //       name: "李雷",
+      //       age: 18,
+      //     };
+      //   },
+      // });
+      // console.log("手动创建的Vue实例1---vm：", vm);
+
+      // setTimeout(() => {
+      //   vm.name = "Tom";
+      // }, 1000);
     </script>
   </body>
 </html>

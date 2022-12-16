@@ -12,13 +12,16 @@ export function initMixin(Vue) {
 
     /**
      * options是用户传入的配置项
-     * this.constructor.options是全局Vue上的静态options对象
+     * this.constructor.options 是全局Vue上的静态options对象
      *
      * Vue.mixin的作用就是将全局的配置项合并成为一个对象，将相同key的值放入一个数组中
      * Vue的实例在初始化的时候会再次将用户自己传入的配置项和之前全局的配置对象二次进行合并
-     * 这样做的好处是我们定义的全局Vue的filter、指令、组件component等最终都会挂载到每一个Vue的实例$options属性上
+     * 这样做的好处是我们定义的全局Vue的filter、指令、组件components等最终都会挂载到每一个Vue的实例$options属性上
      * 供Vue的实例this进行调用 这就是为什么全局的过滤器、组件在任意地方都可以访问调用的原因
      * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
+     * 
+     * 为什么不直接写Vue.options，而是要写this.constructor.options
+     * 就是为了实现Vue.extend继承的时候，这里的配置可能是Vue子类的配置Sub.options
      */
     vm.$options = mergeOptions(this.constructor.options, options);
     // console.log(vm.$options);

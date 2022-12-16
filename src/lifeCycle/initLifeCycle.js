@@ -45,16 +45,28 @@ export function initLifeCycle(Vue) {
     */
     const vm = this;
     const element = vm.$el;
+    const prevVnode = vm._vNode;
+    /* 
+      把组件首次渲染产生的虚拟节点保存在vm._vNode上
+      那么以后每次渲染就可以基于旧的虚拟DOM和当前新的虚拟DOM进行patch对比然后渲染
+    */
+    vm._vNode = vNode;
 
     /**
      * 1. 获取基于vNode虚拟DOM生成的真实DOM节点
      * 2. 将真实DOM节点替换到旧的element元素节点上
      * 3. 将真实DOM节点赋值给实例的$el属性，方便在下一次更新的时候传递oldVNode的时候，参数就是上一次生成的$el属性
-     *
+     *  
+     * 当prevVnode存在，说明不是第一次渲染，此时需要新旧节点的diff对比，然后在对比的过程中更新节点
+     * 当prevVnode不存在，说明是首次渲染，此时只需要将虚拟DOM通过createElement方法转化为真实DOM之后然后进行挂载即可
      */
-
-    let truthDom = patch(element, vNode);
-    vm.$el = truthDom;
+    if(prevVnode){
+      vm.$el = patch(prevVnode,vNode);
+    }else{
+      let truthDom = patch(element, vNode);
+      vm.$el = truthDom;
+    }
+    
     // console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
   };
 

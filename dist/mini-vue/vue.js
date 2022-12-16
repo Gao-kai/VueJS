@@ -1399,16 +1399,35 @@
 
   // 策略对象集 最后会得到key为各生命周期函数名 value为生命周期函数的对象
   var strats = {};
-  var LIFECYCLE = ["beforeCreate", "created", "beforeMount", "mounted", "beforeUpdate", "updated", "beforeDestroy", "destroyed"];
 
   /* 
     这里只是生命周期的策略，后续我们可以自定义任意策略：
     strats.data = function(){};
     strats.computed = function(){};
     strats.watch = function(){};
+    strats.components = function(){};
     ....
   */
+  var LIFECYCLE = ["beforeCreate", "created", "beforeMount", "mounted", "beforeUpdate", "updated", "beforeDestroy", "destroyed"];
 
+  /* 
+  	处理components属性的时候要处理一个全局和局部组件的原型链关系
+  	为了实现全局组件和局部组件的name一样的时候，可以先局部后全局
+  	而这个是基于原型链实现的 背后还是Object.create API
+
+  	子组件有compoents优先使用自己的
+  	如果找不到那么按照原型链查找父类的compoents 也就是全局的components
+  	parentValue就是Vue.options.components
+  	childValue就是Vue.extend时传入的options.components
+  */
+  strats.components = function (parentValue, childValue) {
+    var res = Object.create(parentValue);
+    for (var key in childValue) {
+      // 首先拷贝childValue有的直接读取自己 没有沿着原型链找到parentValue上
+      res[key] = childValue[key];
+    }
+    return res;
+  };
   function makeStrats(stratsList) {
     stratsList.forEach(function (hook) {
       strats[hook] = function (oldValue, newValue) {
@@ -1428,39 +1447,38 @@
 
   /**
    * 将用户传入的options和Vue.options合并，并将合并的结果再次赋值给Vue.options
-   * @param {*} oldOptions Vue.options全局配置
-   * @param {*} newOptions 用户传入的options
-   * 
+   * @param {*} oldOptions Vue.options全局配置或者Vue子类配置对象Sub.options
+   * @param {*} newOptions 用户new类的时候传入的自定义options
+   *
    * {} {created:fn1} => {created:[fn1]}
-   * 
+   *
    * {created :[fn1]}  {created:fn2} => {created:[fn1,fn2]}
-   * 
+   *
    */
   function mergeOptions(oldOptions, newOptions) {
     var options = {};
 
     /* 
-    	假设目前定义了a、b、c三种策略，属性d没有策略
-    
-    	先以oldOptions也就是Vue.options上的key为基准，和当前的newOption进行合并
-    	Vue.options = {a:[1],b:[2]}
-    	newOptions = {a:3,c:4，d:5}
-    	这一轮过后由于以Vue.options上的key为基准，所以只会将属性a和b进行合并
-    	而newOptions中的属性c并不会合并，变为：
-    	Vue.options = {a:[1,3],b:[2]}
-    	这一轮过后所有Vue.options中的key都会被处理，要不创建新数组包裹要不数组合并
+    假设目前定义了a、b、c三种策略，属性d没有策略
+    		先以oldOptions也就是Vue.options上的key为基准，和当前的newOption进行合并
+    Vue.options = {a:[1],b:[2]}
+    newOptions = {a:3,c:4，d:5}
+    这一轮过后由于以Vue.options上的key为基准，所以只会将属性a和b进行合并
+    而newOptions中的属性c并不会合并，变为：
+    Vue.options = {a:[1,3],b:[2]}
+    这一轮过后所有Vue.options中的key都会被处理，要不创建新数组包裹要不数组合并
     */
     for (var key in oldOptions) {
       mergeField(key);
     }
 
     /* 
-    	再以newOptions上的key为基准，和当前的Vue.options中的key进行合并
-    	Vue.options = {a:[1,3],b:[2]}
-    	newOptions = {a:3,c:4}
-    	在上一轮已经合并过的a属性不会再被合并了，只合并c属性，d属性没有策略直接取newOptions的
-    	合并结果为：
-    	Vue.options = {a:[1,3],b:[2]，c:[4],d:5}
+    再以newOptions上的key为基准，和当前的Vue.options中的key进行合并
+    Vue.options = {a:[1,3],b:[2]}
+    newOptions = {a:3,c:4}
+    在上一轮已经合并过的a属性不会再被合并了，只合并c属性，d属性没有策略直接取newOptions的
+    合并结果为：
+    Vue.options = {a:[1,3],b:[2]，c:[4],d:5}
     */
     for (var _key in newOptions) {
       if (!oldOptions.hasOwnProperty(_key)) {
@@ -1499,13 +1517,16 @@
 
       /**
        * options是用户传入的配置项
-       * this.constructor.options是全局Vue上的静态options对象
+       * this.constructor.options 是全局Vue上的静态options对象
        *
        * Vue.mixin的作用就是将全局的配置项合并成为一个对象，将相同key的值放入一个数组中
        * Vue的实例在初始化的时候会再次将用户自己传入的配置项和之前全局的配置对象二次进行合并
-       * 这样做的好处是我们定义的全局Vue的filter、指令、组件component等最终都会挂载到每一个Vue的实例$options属性上
+       * 这样做的好处是我们定义的全局Vue的filter、指令、组件components等最终都会挂载到每一个Vue的实例$options属性上
        * 供Vue的实例this进行调用 这就是为什么全局的过滤器、组件在任意地方都可以访问调用的原因
        * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
+       * 
+       * 为什么不直接写Vue.options，而是要写this.constructor.options
+       * 就是为了实现Vue.extend继承的时候，这里的配置可能是Vue子类的配置Sub.options
        */
       vm.$options = mergeOptions(this.constructor.options, options);
       // console.log(vm.$options);
@@ -1571,9 +1592,18 @@
   }
 
   /**
+   * 判断是否为H5原始标签
+   * @param {*} tag 标签名称
+   * @returns
+   */
+  function isReservedTag(tag) {
+    return ["div", "p", "span", "h1", "h2", "a", "ul", "li"].includes(tag);
+  }
+
+  /**
    *
    * @param {*} vm 实例
-   * @param {*} tag 元素名称
+   * @param {*} tag 元素名称或者组件名称
    * @param {*} data data代表元素属性对象
    * @param  {...any} children 元素子节点
    * @returns
@@ -1585,11 +1615,41 @@
     // 这个key就是虚拟DOM diff时的那个key，存在于属性data中
     var key = data.key;
 
-    // 创建元素虚拟节点
+    /* 
+      如果是H5原始标签 那么创建原始元素的虚拟节点
+      如果是组件名称 比如是my-button这种自定义标签 那么创建组件的虚拟节点
+    */
     for (var _len = arguments.length, children = new Array(_len > 3 ? _len - 3 : 0), _key = 3; _key < _len; _key++) {
       children[_key - 3] = arguments[_key];
     }
-    return createVNode(vm, tag, key, data, children, null);
+    if (isReservedTag) {
+      return createVNode(vm, tag, key, data, children, null);
+    } else {
+      // 基于vm.$options.components和tag取出value
+      var Ctor = vm.$options.components[tag];
+      return createComponentVnode(vm, tag, key, data, children, Ctor);
+    }
+  }
+
+  /**
+   *
+   * @param {*} vm 实例
+   * @param {*} tag 组件名称 my-button
+   * @param {*} key 组件的key属性 默认为null
+   * @param {*} data 组件的属性
+   * @param {*} children 组件的子节点数组 其实也就是插槽slot
+   * @param {*} Ctor 组件的构造函数
+   */
+  function createComponentVnode(vm, tag, key, data, children, Ctor) {
+    // Ctor可能是一个组件的构造函数 也可能是一个包含template属性的对象 如果是对象 需要包装为组件的构造函数
+    CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
+    data.hook = {
+      // 稍后创建真实节点的时候  如果是组件 则调用此init方法
+      init: function init() {}
+    };
+    return createVNode(vm, tag, key, data, children, null, {
+      CpnConstructor: CpnConstructor
+    });
   }
 
   /**
@@ -1607,12 +1667,13 @@
    *
    * @param {*} vm 实例对象
    * @param {*} tag 生成的元素节点名称
-   * @param {*} key DOM diff时的ket
+   * @param {*} key DOM diff时的key
    * @param {*} props 生成的元素属性对象
    * @param {*} children 子元素组成的数组
    * @param {*} text 元素的文本
+   * @param {*} componentOptions 组件的配置对象 内置组件的构造函数
    */
-  function createVNode(vm, tag, key, props, children, text) {
+  function createVNode(vm, tag, key, props, children, text, componentOptions) {
     /* 
             问题：虚拟DOM和AST抽象树的区别
     
@@ -1626,7 +1687,8 @@
       key: key,
       props: props,
       children: children,
-      text: text
+      text: text,
+      componentOptions: componentOptions
     };
   }
 
@@ -2100,16 +2162,28 @@
       */
       var vm = this;
       var element = vm.$el;
+      var prevVnode = vm._vNode;
+      /* 
+        把组件首次渲染产生的虚拟节点保存在vm._vNode上
+        那么以后每次渲染就可以基于旧的虚拟DOM和当前新的虚拟DOM进行patch对比然后渲染
+      */
+      vm._vNode = vNode;
 
       /**
        * 1. 获取基于vNode虚拟DOM生成的真实DOM节点
        * 2. 将真实DOM节点替换到旧的element元素节点上
        * 3. 将真实DOM节点赋值给实例的$el属性，方便在下一次更新的时候传递oldVNode的时候，参数就是上一次生成的$el属性
-       *
+       *  
+       * 当prevVnode存在，说明不是第一次渲染，此时需要新旧节点的diff对比，然后在对比的过程中更新节点
+       * 当prevVnode不存在，说明是首次渲染，此时只需要将虚拟DOM通过createElement方法转化为真实DOM之后然后进行挂载即可
        */
+      if (prevVnode) {
+        vm.$el = patch(prevVnode, vNode);
+      } else {
+        var truthDom = patch(element, vNode);
+        vm.$el = truthDom;
+      }
 
-      var truthDom = patch(element, vNode);
-      vm.$el = truthDom;
       // console.log("_update函数执行，执行patch函数渲染虚拟DOM，生成真实DOM",truthDom);
     };
 
@@ -2134,16 +2208,18 @@
     // 原型挂载核心API
     Vue.prototype.$nextTick = nextTick;
 
-    /* Vue类的静态全局配置对象 */
-    Vue.options = {};
+    /* Vue类的静态全局配置对象 方便在任何地方都可以通过 vm.$options._base 拿到Vue类 接着获取到Vue上的所有静态方法 */
+    Vue.options = {
+      _base: Vue
+    };
 
     /**
-    * 调用 一次mixin，就把选项中的created取出来挂到Vue.options的created数组
-    * 
-    * 将全局的Vue.options对象和用户传入的mixinOptions进行合并
-    * 合并完成之后将结果赋值给全局Vue.options对象对应的key的数组上
-    * @param {Object} mixinOptions
-    */
+     * 调用 一次mixin，就把选项中的created取出来挂到Vue.options的created数组
+     *
+     * 将全局的Vue.options对象和用户传入的mixinOptions进行合并
+     * 合并完成之后将结果赋值给全局Vue.options对象对应的key的数组上
+     * @param {Object} mixinOptions
+     */
     Vue.mixin = function (mixinOptions) {
       // this就是Vue构造函数
       this.options = mergeOptions(this.options, mixinOptions);
@@ -2160,15 +2236,74 @@
       console.log("\u521B\u5EFAwatch\u5C5E\u6027\uFF0C\u8981\u76D1\u63A7\u7684\u5C5E\u6027\u540D\u4E3A".concat(exprOrFn, ",\u56DE\u8C03\u51FD\u6570\u4E3A").concat(callback));
 
       /* 
-          调用$watch的核心就是调用new Watcher
-          1. this就是vm实例
-          2. exprOrFn就是需要观察的vm实例上的属性名字符串或者函数，我们会在Watcher中将字符串变为函数
-          3. 配置项{user:true}告诉Watcher这是一个用户自定义的watcher
-          4. callback 观察的属性发生变化的时候执行的回调函数
-      */
+              调用$watch的核心就是调用new Watcher
+              1. this就是vm实例
+              2. exprOrFn就是需要观察的vm实例上的属性名字符串或者函数，我们会在Watcher中将字符串变为函数
+              3. 配置项{user:true}告诉Watcher这是一个用户自定义的watcher
+              4. callback 观察的属性发生变化的时候执行的回调函数
+          */
       new Watcher(this, exprOrFn, {
         user: true
       }, callback);
+    };
+
+    /**
+     * 根据用户传入的参数options，返回一个Vue的子类
+     * 其实这个子类就是组件的构造函数
+     * 通过new这个子类然后执行$mount方法就可以实现组件模板的手动挂载
+     *
+     * @param {*} options 配置项，其中data必须是一个函数
+     * @returns Vue的子类
+     */
+    Vue.extend = function (options) {
+      function Sub() {
+        var options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+        /* 
+                  这里的this就是Sub类的实例，通过原型链可以找到Vue原型上的_init方法
+                  执行_init方法就会对当前实例进行一系列初始化操作，比如：
+                  1. 合并配置项mergeOptions
+                  2. 注入钩子函数
+                  3. initState初始化各类状态比如data、computed、watch等
+              */
+        this._init(options);
+      }
+
+      /* 
+              实现继承：基于 Object.create API
+              让子类的原型对象指向一个空对象，这个空对象的__proto__指向Vue.prototype
+              注意需要在继承结束之后将子类的constructor属性指向子类本身，否则会自动指向父类
+          */
+      Sub.prototype = Object.create(Vue.prototype);
+      Sub.prototype.constructor = Sub;
+
+      /* 
+              每次使用Vue.extend创建一个组件的构造函数时
+              都会将全局的options和用户调用Vue.extend时传入的options进行合并
+                1. Vue.options中包含了全局组件components、指令directives、filters等
+              2. Vue.extend时传入的options中包含了局部组件components、指令directives、filters等
+                将两者合并后的对象放在Sub.options上面
+              便于用户在new这个Sub的时候，第二次通过mergeOptions合并其new的时候传入的自定义options
+              保证之后new Sub得到的实例上一定可以访问到全局的组件 指令 过滤器等
+          */
+      Sub.options = mergeOptions(Vue.options, options);
+      return Sub;
+    };
+
+    /**
+     * 创建一个全局组件
+     * @param {*} id 全局组件的唯一名称name
+     * @param {*} definition 全局组件的定义
+     *
+     * definition可以是Vue.extend()的返回值 ：Vue.extend({template: "<button>全局组件的按钮</button>"})
+     * definition也可以是参数对象options: {template: "<button>全局组件的按钮</button>"}
+     */
+    // 定义全局属性components，里面的key是组件名称，value是组件对应的龚总啊
+    Vue.options.components = {};
+    Vue.component = function (id, definition) {
+      // 如果definition已经是一个类(函数) 那么说明用户已经调用了Vue.extend对其进行了包装
+      definition = typeof definition === "function" ? definition : Vue.extend(definition);
+      Vue.options.components[id] = definition;
+      console.log(Vue.options);
     };
   }
 
@@ -2187,36 +2322,6 @@
 
   // 全局API Vue.mixin nexttick和$watch
   initGlobalApi(Vue);
-  var render1 = compileToFunction("<ul id=\"1\" style=\"color:red;font-size:16px\">\n\t<li key=\"a\">a</li>\n\t<li key=\"b\">b</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"d\">d</li>\n</ul>");
-  var vm1 = new Vue({
-    data: {
-      name: "你好啊，李银河！"
-    }
-  });
-  var oldVNode = render1.call(vm1);
-  var oldEl = createElement(oldVNode);
-  document.body.appendChild(oldEl);
-  var render2 = compileToFunction("<ul id=\"2\" style=\"color:yellow;background:pink\">\n\t<li key=\"b\">b</li>\n\t<li key=\"m\">m</li>\n\t<li key=\"a\">a</li>\n\t<li key=\"p\">p</li>\n\t<li key=\"c\">c</li>\n\t<li key=\"q\">q</li>\n</ul>");
-  var vm2 = new Vue({
-    data: {
-      name: "你好啊，李银河！"
-    }
-  });
-  var newVNode = render2.call(vm2);
-  // let newEl = createElement(newVNode);
-
-  // 新DOM替换旧DOM
-  // let parentEl = oldEl.parentNode;
-
-  setTimeout(function () {
-    /*  
-    直接用新节点替换老节点
-    parentEl.insertBefore(newEl, oldEl);
-    	parentEl.removeChild(oldEl); 
-    */
-
-    patch(oldVNode, newVNode);
-  }, 1000);
 
   return Vue;
 

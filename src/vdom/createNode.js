@@ -1,7 +1,16 @@
 /**
+ * 判断是否为H5原始标签
+ * @param {*} tag 标签名称
+ * @returns
+ */
+function isReservedTag(tag) {
+  return ["div", "p", "span", "h1", "h2", "a", "ul", "li"].includes(tag);
+}
+
+/**
  *
  * @param {*} vm 实例
- * @param {*} tag 元素名称
+ * @param {*} tag 元素名称或者组件名称
  * @param {*} data data代表元素属性对象
  * @param  {...any} children 元素子节点
  * @returns
@@ -13,8 +22,39 @@ export function createElementVNode(vm, tag, data, ...children) {
   // 这个key就是虚拟DOM diff时的那个key，存在于属性data中
   let key = data.key;
 
-  // 创建元素虚拟节点
-  return createVNode(vm, tag, key, data, children, null);
+  /* 
+    如果是H5原始标签 那么创建原始元素的虚拟节点
+    如果是组件名称 比如是my-button这种自定义标签 那么创建组件的虚拟节点
+  */
+  if (isReservedTag) {
+    return createVNode(vm, tag, key, data, children, null);
+  } else {
+    // 基于vm.$options.components和tag取出value
+    let Ctor = vm.$options.components[tag];
+    return createComponentVnode(vm, tag, key, data, children, Ctor);
+  }
+}
+
+/**
+ *
+ * @param {*} vm 实例
+ * @param {*} tag 组件名称 my-button
+ * @param {*} key 组件的key属性 默认为null
+ * @param {*} data 组件的属性
+ * @param {*} children 组件的子节点数组 其实也就是插槽slot
+ * @param {*} Ctor 组件的构造函数
+ */
+function createComponentVnode(vm, tag, key, data, children, Ctor) {
+  // Ctor可能是一个组件的构造函数 也可能是一个包含template属性的对象 如果是对象 需要包装为组件的构造函数
+  CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
+
+  data.hook = {
+    // 稍后创建真实节点的时候  如果是组件 则调用此init方法
+    init(){
+      
+    }
+  }
+  return createVNode(vm, tag, key, data, children, null,{CpnConstructor});
 }
 
 /**
@@ -32,12 +72,13 @@ export function createTextVNode(vm, text) {
  *
  * @param {*} vm 实例对象
  * @param {*} tag 生成的元素节点名称
- * @param {*} key DOM diff时的ket
+ * @param {*} key DOM diff时的key
  * @param {*} props 生成的元素属性对象
  * @param {*} children 子元素组成的数组
  * @param {*} text 元素的文本
+ * @param {*} componentOptions 组件的配置对象 内置组件的构造函数
  */
-function createVNode(vm, tag, key, props, children, text) {
+function createVNode(vm, tag, key, props, children, text,componentOptions) {
   /* 
           问题：虚拟DOM和AST抽象树的区别
   
@@ -52,5 +93,6 @@ function createVNode(vm, tag, key, props, children, text) {
     props,
     children,
     text,
+    componentOptions
   };
 }
