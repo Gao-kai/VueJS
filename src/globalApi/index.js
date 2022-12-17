@@ -83,27 +83,30 @@ export function initGlobalApi(Vue) {
             将两者合并后的对象放在Sub.options上面
             便于用户在new这个Sub的时候，第二次通过mergeOptions合并其new的时候传入的自定义options
             保证之后new Sub得到的实例上一定可以访问到全局的组件 指令 过滤器等
+
+            组件的合并策略：先查找自己的，后查找全局的
         */
     Sub.options = mergeOptions(Vue.options, options);
 
     return Sub;
   };
 
+
+
+
   /**
-   * 创建一个全局组件
+   * 保存全局组件的定义，将组件id和组件的定义definition关联起来
    * @param {*} id 全局组件的唯一名称name
    * @param {*} definition 全局组件的定义
    *
    * definition可以是Vue.extend()的返回值 ：Vue.extend({template: "<button>全局组件的按钮</button>"})
-   * definition也可以是参数对象options: {template: "<button>全局组件的按钮</button>"}
+   * definition也可以是参数对象options: {template: "<button>全局组件的按钮</button>"}，此时会包装为构造函数
    */
-  // 定义全局属性components，里面的key是组件名称，value是组件对应的龚总啊
   Vue.options.components = {};
   Vue.component = function (id, definition) {
     // 如果definition已经是一个类(函数) 那么说明用户已经调用了Vue.extend对其进行了包装
     definition =
       typeof definition === "function" ? definition : Vue.extend(definition);
     Vue.options.components[id] = definition;
-    console.log(Vue.options);
   };
 }

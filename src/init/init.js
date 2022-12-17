@@ -23,8 +23,8 @@ export function initMixin(Vue) {
      * 为什么不直接写Vue.options，而是要写this.constructor.options
      * 就是为了实现Vue.extend继承的时候，这里的配置可能是Vue子类的配置Sub.options
      */
+    console.log('组件实例化',this.constructor.options,options);
     vm.$options = mergeOptions(this.constructor.options, options);
-    // console.log(vm.$options);
     
     // data未初始化前调用beforeCreate生命周期函数
     callHook(vm, "beforeCreate");

@@ -1528,8 +1528,8 @@
        * 为什么不直接写Vue.options，而是要写this.constructor.options
        * 就是为了实现Vue.extend继承的时候，这里的配置可能是Vue子类的配置Sub.options
        */
+      console.log('组件实例化', this.constructor.options, options);
       vm.$options = mergeOptions(this.constructor.options, options);
-      // console.log(vm.$options);
 
       // data未初始化前调用beforeCreate生命周期函数
       callHook(vm, "beforeCreate");
@@ -1597,7 +1597,7 @@
    * @returns
    */
   function isReservedTag(tag) {
-    return ["div", "p", "span", "h1", "h2", "a", "ul", "li"].includes(tag);
+    return ["div", "p", "span", "h1", "h2", "a", "ul", "li", 'button'].includes(tag);
   }
 
   /**
@@ -1622,7 +1622,7 @@
     for (var _len = arguments.length, children = new Array(_len > 3 ? _len - 3 : 0), _key = 3; _key < _len; _key++) {
       children[_key - 3] = arguments[_key];
     }
-    if (isReservedTag) {
+    if (isReservedTag(tag)) {
       return createVNode(vm, tag, key, data, children, null);
     } else {
       // 基于vm.$options.components和tag取出value
@@ -1641,11 +1641,30 @@
    * @param {*} Ctor 组件的构造函数
    */
   function createComponentVnode(vm, tag, key, data, children, Ctor) {
-    // Ctor可能是一个组件的构造函数 也可能是一个包含template属性的对象 如果是对象 需要包装为组件的构造函数
-    CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
+    /* 
+       Ctor可能是一个组件的构造函数 
+       也可能是一个包含template属性的对象 如果是对象 需要调用Vue.extend包装为组件的构造函数
+       Vue.extend从哪里获取Vue? 通过vm.$options._base
+    */
+    var CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
+
+    // 给组件的虚拟节点的data属性上挂载一个回调钩子，用于在创建组件真实DOM的时候回调
     data.hook = {
       // 稍后创建真实节点的时候  如果是组件 则调用此init方法
-      init: function init() {}
+      init: function init(cpnVNode) {
+        // 之前将组件的构造函数挂载到了虚拟节点的componentOptions上 方便init回调触发的时候获取构造函数
+        var CpnConstructor = cpnVNode.componentOptions.CpnConstructor;
+
+        // new 这个组件的构造函数 获取到组件的实例 并将实例挂载到组件的虚拟节点的componentInstance上
+        var instance = cpnVNode.componentInstance = new CpnConstructor();
+
+        /* 
+          获取到组件实例接着调用$mount方法
+          生成组件的真实DOM并挂载到当前组件实例的$el属性上
+          便于后续在生成组件真实DOM时直接通过vNode.componentInstance.$el获取到组件真实DOM
+        */
+        instance.$mount();
+      }
     };
     return createVNode(vm, tag, key, data, children, null, {
       CpnConstructor: CpnConstructor
@@ -1703,6 +1722,15 @@
    * @param {*} vNode 执行render函数生成的虚拟DOM对象
    */
   function patch(oldVNode, newVNode) {
+    /* 
+       如果oldVNode是null 那么此时是组件的挂载 
+       newVNode便是组件的虚拟DOM节点
+       此时返回的是组件虚拟节点的真实节点，并且会将这个结果赋值给vm.$el属性
+    */
+    if (!oldVNode) {
+      return createElement(newVNode);
+    }
+
     // 如果oldVNode是一个真实的DOM元素 那么代表传递进来的是要挂载的DOM节点是初始化渲染
     var isRealDomElement = oldVNode.nodeType;
     if (isRealDomElement) {
@@ -1811,6 +1839,32 @@
   }
 
   /**
+   * 如果是组件的虚拟节点
+   * 就生成组件的真实DOM
+   * 返回一个布尔值true
+   * @param {*} vNode
+   *
+   * 如何判断是组件的虚拟节点？取vNode上的data属性上的hook属性，如果存在便是
+   */
+  function createComponent(vNode) {
+    var i = vNode.props;
+    // 其实就是兼容性安全取出data上hook属性上的init方法，并连续赋值给i变量
+    if (i && (i = i.hook) && (i = i.init)) {
+      /* 
+        这里的i就是init方法 
+        那么将组件的虚拟节点vNode传递给init方法 
+        开始组件的初始化，调用createComponentVnode中的init方法
+      */
+      i(vNode);
+    }
+
+    // 如果vNode上存在componentInstance属性 那么是组件 返回true
+    if (vNode.componentInstance) {
+      return true;
+    }
+  }
+
+  /**
    * 将虚拟DOM vNode转化为 真实DOM节点
    * JS对象 ==> HTML Element
    */
@@ -1820,15 +1874,24 @@
       children = vNode.children,
       text = vNode.text;
 
-    // 创建真实元素节点
+    /* 
+      创建真实节点
+      tag有可能是HTML标签
+      tag也有可能是一个组件名称比如my-button
+    */
     if (typeof tag === "string") {
+      // 如果创建组件节点成功后续就不再走了
+      if (createComponent(vNode)) {
+        return vNode.componentInstance.$el;
+      }
+
       // 虚拟DOM和真实DOM连接起来,后续如果修改属性了，可以直接找到虚拟节点对应的真实节点修改
       vNode.el = document.createElement(tag);
 
       // 给节点属性赋值
       patchProps(vNode.el, {}, props);
 
-      // 给节点添加子节点
+      // 给节点递归添加子节点
       children.forEach(function (childvNode) {
         vNode.el.appendChild(createElement(childvNode));
       });
@@ -1960,7 +2023,7 @@
       return map;
     }
     var oldKeyMap = makeKey2Index(oldChildren);
-    console.log('oldKeyMap', oldKeyMap);
+    console.log("oldKeyMap", oldKeyMap);
 
     /* 
       对比的条件：如果有任意一方的头指针大于尾指针 那么对比结束停止循环
@@ -2041,16 +2104,16 @@
       }
 
       /* 
-        6. 乱序对比
-        
-        首先基于旧的节点列表做一个映射表
-        然后从新的节点列表的头指针开始依次查找
-        如果在映射表中找到了，就将此时旧列表中的元素移动到当前找到的节点的前面
-        如果找不到则插入到旧指针的节点的前面
-        最后删除旧节点列表中多余的元素
-        abcd
-        bmapcq
-      */
+          6. 乱序对比
+          
+          首先基于旧的节点列表做一个映射表
+          然后从新的节点列表的头指针开始依次查找
+          如果在映射表中找到了，就将此时旧列表中的元素移动到当前找到的节点的前面
+          如果找不到则插入到旧指针的节点的前面
+          最后删除旧节点列表中多余的元素
+          abcd
+          bmapcq
+        */
 
       var moveIndex = oldKeyMap[newStartVNode.key];
       if (moveIndex) {
@@ -2284,26 +2347,25 @@
                 将两者合并后的对象放在Sub.options上面
               便于用户在new这个Sub的时候，第二次通过mergeOptions合并其new的时候传入的自定义options
               保证之后new Sub得到的实例上一定可以访问到全局的组件 指令 过滤器等
+                组件的合并策略：先查找自己的，后查找全局的
           */
       Sub.options = mergeOptions(Vue.options, options);
       return Sub;
     };
 
     /**
-     * 创建一个全局组件
+     * 保存全局组件的定义，将组件id和组件的定义definition关联起来
      * @param {*} id 全局组件的唯一名称name
      * @param {*} definition 全局组件的定义
      *
      * definition可以是Vue.extend()的返回值 ：Vue.extend({template: "<button>全局组件的按钮</button>"})
-     * definition也可以是参数对象options: {template: "<button>全局组件的按钮</button>"}
+     * definition也可以是参数对象options: {template: "<button>全局组件的按钮</button>"}，此时会包装为构造函数
      */
-    // 定义全局属性components，里面的key是组件名称，value是组件对应的龚总啊
     Vue.options.components = {};
     Vue.component = function (id, definition) {
       // 如果definition已经是一个类(函数) 那么说明用户已经调用了Vue.extend对其进行了包装
       definition = typeof definition === "function" ? definition : Vue.extend(definition);
       Vue.options.components[id] = definition;
-      console.log(Vue.options);
     };
   }
 

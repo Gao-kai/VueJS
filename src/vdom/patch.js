@@ -9,6 +9,16 @@
  * @param {*} vNode 执行render函数生成的虚拟DOM对象
  */
 export function patch(oldVNode, newVNode) {
+  /* 
+     如果oldVNode是null 那么此时是组件的挂载 
+     newVNode便是组件的虚拟DOM节点
+     此时返回的是组件虚拟节点的真实节点，并且会将这个结果赋值给vm.$el属性
+  */
+  if(!oldVNode){
+    return createElement(newVNode)
+  }
+
+
   // 如果oldVNode是一个真实的DOM元素 那么代表传递进来的是要挂载的DOM节点是初始化渲染
   let isRealDomElement = oldVNode.nodeType;
 
@@ -119,21 +129,56 @@ function patchVNode(oldVNode, newVNode) {
 }
 
 /**
+ * 如果是组件的虚拟节点
+ * 就生成组件的真实DOM
+ * 返回一个布尔值true
+ * @param {*} vNode
+ *
+ * 如何判断是组件的虚拟节点？取vNode上的data属性上的hook属性，如果存在便是
+ */
+function createComponent(vNode) {
+  let i = vNode.props;
+  // 其实就是兼容性安全取出data上hook属性上的init方法，并连续赋值给i变量
+  if (i && (i = i.hook) && (i = i.init)) {
+    /* 
+      这里的i就是init方法 
+      那么将组件的虚拟节点vNode传递给init方法 
+      开始组件的初始化，调用createComponentVnode中的init方法
+    */
+    i(vNode);
+  }
+
+  // 如果vNode上存在componentInstance属性 那么是组件 返回true
+  if(vNode.componentInstance){
+    return true;
+  }
+}
+
+/**
  * 将虚拟DOM vNode转化为 真实DOM节点
  * JS对象 ==> HTML Element
  */
 export function createElement(vNode) {
   let { tag, props, children, text } = vNode;
 
-  // 创建真实元素节点
+  /* 
+    创建真实节点
+    tag有可能是HTML标签
+    tag也有可能是一个组件名称比如my-button
+  */
   if (typeof tag === "string") {
+    // 如果创建组件节点成功后续就不再走了
+    if (createComponent(vNode)){
+      return vNode.componentInstance.$el;
+    };
+
     // 虚拟DOM和真实DOM连接起来,后续如果修改属性了，可以直接找到虚拟节点对应的真实节点修改
     vNode.el = document.createElement(tag);
 
     // 给节点属性赋值
     patchProps(vNode.el, {}, props);
 
-    // 给节点添加子节点
+    // 给节点递归添加子节点
     children.forEach((childvNode) => {
       vNode.el.appendChild(createElement(childvNode));
     });
@@ -239,7 +284,7 @@ function updateChildren(el, oldChildren, newChildren) {
   let newEndVNode = newChildren[newEndIndex];
 
   // 生成旧节点数组中每一个节点的key和index的映射表
-  function makeKey2Index(children){
+  function makeKey2Index(children) {
     let map = {};
     for (let i = 0; i < children.length; i++) {
       let child = children[i];
@@ -248,16 +293,16 @@ function updateChildren(el, oldChildren, newChildren) {
     return map;
   }
   let oldKeyMap = makeKey2Index(oldChildren);
-  console.log('oldKeyMap',oldKeyMap);
+  console.log("oldKeyMap", oldKeyMap);
 
   /* 
     对比的条件：如果有任意一方的头指针大于尾指针 那么对比结束停止循环
   */
   while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
-    if(oldStartVNode == undefined){
+    if (oldStartVNode == undefined) {
       oldStartIndex++;
       oldStartVNode = oldChildren[oldStartIndex];
-    }else if(oldEndVNode == undefined){
+    } else if (oldEndVNode == undefined) {
       oldEndIndex--;
       oldEndVNode = oldChildren[oldEndIndex];
     }
@@ -316,20 +361,20 @@ function updateChildren(el, oldChildren, newChildren) {
       5. 此种更新也适用于排序元素与倒序元素更新的情况，此时也是交叉对比，比如：
       abcd => dcba 头结点和尾结点相同，那么依次将旧的a、b、c移动到d的下一个子节点前面，复用了节点d，最终效果是dcba
     */
-      if (isSameVNode(oldStartVNode, newEndVNode)) {
-        // 递归比较子节点
-        patchVNode(oldStartVNode, newEndVNode);
-        // 先将旧的oldStartVNode移动到oldEndVNode的下一个节点的前面
-        el.insertBefore(oldStartVNode.el, oldEndVNode.el.nextSibling);
-        //  旧的头指针++，新的尾指针--
-        oldStartIndex++;
-        newEndIndex--;
-        oldStartVNode = oldChildren[oldStartIndex];
-        newEndVNode = newChildren[newEndIndex];
-        continue;
-      }
+    if (isSameVNode(oldStartVNode, newEndVNode)) {
+      // 递归比较子节点
+      patchVNode(oldStartVNode, newEndVNode);
+      // 先将旧的oldStartVNode移动到oldEndVNode的下一个节点的前面
+      el.insertBefore(oldStartVNode.el, oldEndVNode.el.nextSibling);
+      //  旧的头指针++，新的尾指针--
+      oldStartIndex++;
+      newEndIndex--;
+      oldStartVNode = oldChildren[oldStartIndex];
+      newEndVNode = newChildren[newEndIndex];
+      continue;
+    }
 
-      /* 
+    /* 
         6. 乱序对比
         
         首先基于旧的节点列表做一个映射表
@@ -340,24 +385,24 @@ function updateChildren(el, oldChildren, newChildren) {
         abcd
         bmapcq
       */
-      
-      let moveIndex = oldKeyMap[newStartVNode.key];
-      if(moveIndex){
-        // 找出对应的老的虚拟节点
-        let moveVNode = oldChildren[moveIndex];
-        // 将此节点移动到当前oldStartVNode的前面
-        el.insertBefore(moveVNode.el,oldStartVNode.el)
-        // 将移动过的地方标识为undefiend 代表原来的节点已经移动走了下一次比对的时候需要跳过此位置
-        oldChildren[moveIndex] = undefined;
-        // 对比找到的这个旧的节点和新的节点 将他们的文本属性等进行更新
-        patchVNode(moveVNode,newStartVNode);
-      }else{
-        // 如果找不到就直接将新节点插入到当前oldStartVNode的前面
-        el.insertBefore(createElement(newStartVNode),oldStartVNode.el);
-      }
-      // 新的指针不断前进
-      newStartIndex++;
-      newStartVNode = newChildren[newStartIndex];
+
+    let moveIndex = oldKeyMap[newStartVNode.key];
+    if (moveIndex) {
+      // 找出对应的老的虚拟节点
+      let moveVNode = oldChildren[moveIndex];
+      // 将此节点移动到当前oldStartVNode的前面
+      el.insertBefore(moveVNode.el, oldStartVNode.el);
+      // 将移动过的地方标识为undefiend 代表原来的节点已经移动走了下一次比对的时候需要跳过此位置
+      oldChildren[moveIndex] = undefined;
+      // 对比找到的这个旧的节点和新的节点 将他们的文本属性等进行更新
+      patchVNode(moveVNode, newStartVNode);
+    } else {
+      // 如果找不到就直接将新节点插入到当前oldStartVNode的前面
+      el.insertBefore(createElement(newStartVNode), oldStartVNode.el);
+    }
+    // 新的指针不断前进
+    newStartIndex++;
+    newStartVNode = newChildren[newStartIndex];
   }
 
   /* 
@@ -409,11 +454,10 @@ function updateChildren(el, oldChildren, newChildren) {
     for (let i = oldStartIndex; i <= oldEndIndex; i++) {
       const childVNode = oldChildren[i];
       // 如果有值才进行移除 是为了防止乱序对比后空节点为undefiend导致无法取到el属性的bug a x x d
-      if(childVNode){
+      if (childVNode) {
         const childEl = childVNode.el;
         el.removeChild(childEl);
       }
-      
     }
   }
 }

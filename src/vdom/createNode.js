@@ -4,7 +4,7 @@
  * @returns
  */
 function isReservedTag(tag) {
-  return ["div", "p", "span", "h1", "h2", "a", "ul", "li"].includes(tag);
+  return ["div", "p", "span", "h1", "h2", "a", "ul", "li",'button'].includes(tag);
 }
 
 /**
@@ -26,7 +26,7 @@ export function createElementVNode(vm, tag, data, ...children) {
     如果是H5原始标签 那么创建原始元素的虚拟节点
     如果是组件名称 比如是my-button这种自定义标签 那么创建组件的虚拟节点
   */
-  if (isReservedTag) {
+  if (isReservedTag(tag)) {
     return createVNode(vm, tag, key, data, children, null);
   } else {
     // 基于vm.$options.components和tag取出value
@@ -45,13 +45,29 @@ export function createElementVNode(vm, tag, data, ...children) {
  * @param {*} Ctor 组件的构造函数
  */
 function createComponentVnode(vm, tag, key, data, children, Ctor) {
-  // Ctor可能是一个组件的构造函数 也可能是一个包含template属性的对象 如果是对象 需要包装为组件的构造函数
-  CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
+  /* 
+     Ctor可能是一个组件的构造函数 
+     也可能是一个包含template属性的对象 如果是对象 需要调用Vue.extend包装为组件的构造函数
+     Vue.extend从哪里获取Vue? 通过vm.$options._base
+  */
+  let CpnConstructor = typeof Ctor === "function" ? Ctor : vm.$options._base.extend(Ctor);
 
+  // 给组件的虚拟节点的data属性上挂载一个回调钩子，用于在创建组件真实DOM的时候回调
   data.hook = {
     // 稍后创建真实节点的时候  如果是组件 则调用此init方法
-    init(){
-      
+    init(cpnVNode){
+      // 之前将组件的构造函数挂载到了虚拟节点的componentOptions上 方便init回调触发的时候获取构造函数
+      let CpnConstructor = cpnVNode.componentOptions.CpnConstructor;
+
+      // new 这个组件的构造函数 获取到组件的实例 并将实例挂载到组件的虚拟节点的componentInstance上
+      let instance = cpnVNode.componentInstance = new CpnConstructor();
+
+      /* 
+        获取到组件实例接着调用$mount方法
+        生成组件的真实DOM并挂载到当前组件实例的$el属性上
+        便于后续在生成组件真实DOM时直接通过vNode.componentInstance.$el获取到组件真实DOM
+      */
+      instance.$mount();
     }
   }
   return createVNode(vm, tag, key, data, children, null,{CpnConstructor});
