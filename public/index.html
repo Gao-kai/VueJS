@@ -6,49 +6,17 @@
   </head>
   <body>
     <div id="app">
-      <span>{{name}}</span>
-      <span>{{age}}</span>
-      <my-button></my-button>
-      <my-header></my-header>
+        {{name}}
     </div>
 
-    <div id="root"></div>
 
     <!-- 手写实现 -->
-    <script src="/dist/mini-vue/vue.js"></script>
+    <!-- <script src="/dist/mini-vue/vue.js"></script> -->
 
     <!-- Vue2.0 源码 -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script>
 
     <script>
-      // 注册一个全局组件 可以在任意组件的模板中直接使用
-      // Vue.component("my-button", {
-      //   template: "<button>全局组件-按钮</button>",
-      // });
-
-      // Vue.component("my-header", {
-      //   template: "<h1>全局组件-Header</h1>",
-      // });
-
-      // /* 
-      //   基于Vue.extend API创建子类然后创建子类实例
-      // */
-      // let Sub = Vue.extend({
-      //   template: `<div>
-      //       <span>这是一段文本</span>
-      //       <my-button></my-button>
-      //       <my-header></my-header>
-      //     </div>`,
-      //   components: {
-      //     "my-button": {
-      //       template: "<button>子组件-按钮</button>",
-      //     },
-      //   },
-      // });
-
-      // new Sub().$mount("#root");
-
-      // 默认认为new Vue生成的实例是根实例
       const vm = new Vue({
         el: "#app",
         data() {
@@ -57,16 +25,20 @@
             age: 18,
           };
         },
-        components:{
-          "my-header": {
-            template: "<h1>全局组件-Header</h1>",
-          },
-          "my-button": {
-            template: "<h1>全局组件-Button</h1>",
-          }
+        created(){
+           
+
+            this.$nextTick(()=>{
+                console.log(this.$el.innerHTML);
+            })
+
+            this.name = "hha";
+            // console.log(this.$el); // undefined
         }
+
       });
-      console.log("手动创建的Vue实例1---vm：", vm);
+
+
     </script>
   </body>
 </html>
